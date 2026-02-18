@@ -20,24 +20,29 @@ GOFMT=gofmt
 # Build flags
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)"
 
-# Output directory for cross-platform builds
+# Output directory
 DIST_DIR=dist
 
-# Supported platforms
-PLATFORMS=linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+# Detect current OS and architecture
+CURRENT_OS=$(shell uname -s | tr '[:upper:]' '[:lower:]')
+CURRENT_ARCH=$(shell uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
 
 # Main targets
 all: deps build
 
-build: ## Build the binary for current platform
-	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd
+build: ## Build the binary for current platform into dist/
+	@mkdir -p $(DIST_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/$(BINARY_NAME) ./cmd
+	@echo "Built: $(DIST_DIR)/$(BINARY_NAME)"
 
 # Cross-platform builds
 build-linux: ## Build for Linux (amd64, arm64)
+	@mkdir -p $(DIST_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd
 
 build-darwin: ## Build for macOS (amd64, arm64)
+	@mkdir -p $(DIST_DIR)
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(DIST_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd
 
@@ -63,17 +68,16 @@ build-platform: ## Build for a specific platform (set GOOS and GOARCH)
 
 dist: clean build-all ## Create distribution with checksums
 	@echo "Generating checksums..."
-	@cd $(DIST_DIR) && sha256sum * > checksums.txt
+	@cd $(DIST_DIR) && shasum -a 256 phantom-* > checksums.txt
 	@echo "Distribution created in $(DIST_DIR)/"
 	@cat $(DIST_DIR)/checksums.txt
 
 clean: ## Clean build artifacts
 	$(GOCLEAN)
-	rm -f $(BINARY_NAME)
 	rm -rf $(DIST_DIR)
 
 install: build ## Install the binary to /usr/local/bin
-	install -m 755 $(BINARY_NAME) /usr/local/bin/
+	install -m 755 $(DIST_DIR)/$(BINARY_NAME) /usr/local/bin/
 
 uninstall: ## Uninstall the binary from /usr/local/bin
 	rm -f /usr/local/bin/$(BINARY_NAME)
@@ -84,6 +88,9 @@ deps: ## Download and tidy dependencies
 
 test: ## Run tests
 	$(GOTEST) -v ./...
+
+test-short: ## Run tests (short mode)
+	$(GOTEST) -short ./...
 
 coverage: ## Run tests with coverage
 	$(GOTEST) -v -coverprofile=coverage.out ./...
@@ -100,9 +107,14 @@ fmt: ## Format code
 vet: ## Run go vet
 	$(GOCMD) vet ./...
 
+check: fmt vet lint test ## Run all checks (fmt, vet, lint, test)
+
 # Development targets
 dev: deps build ## Development build
-	./$(BINARY_NAME) --help
+	$(DIST_DIR)/$(BINARY_NAME) --help
+
+run: build ## Build and run with arguments (usage: make run ARGS="start /path")
+	$(DIST_DIR)/$(BINARY_NAME) $(ARGS)
 
 # Release targets
 release: dist ## Create a release (build-all + checksums)
@@ -115,7 +127,7 @@ darwin: build-darwin
 all-platforms: build-all
 
 help: ## Show this help
-	@echo "Overlay FS CLI Tool - Build System"
+	@echo "Phantom - Overlay FS CLI Tool"
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
@@ -126,5 +138,7 @@ help: ## Show this help
 	@echo "  make build-all          # Build for all platforms"
 	@echo "  make dist               # Build all + checksums"
 	@echo "  make release            # Create a release"
+	@echo "  make check              # Run all checks"
+	@echo "  make run ARGS='--help'  # Build and run with arguments"
 	@echo ""
 	@echo "  make build-platform GOOS=linux GOARCH=arm64  # Build for specific platform"

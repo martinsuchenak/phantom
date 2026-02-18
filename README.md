@@ -9,25 +9,43 @@ A Go-based CLI tool for managing overlay filesystems to enable multiple AI agent
 - **Optional persistence** across reboots
 - **Agent wrapper** for running commands in overlay context
 - **Single binary** distribution
+- **Secure by default**: restrictive file permissions, input validation
 
 ## Installation
 
 ### Build from Source
 
 ```bash
-go build -o phantom ./cmd
-```
-
-Or use the Makefile:
-
-```bash
 make build
 ```
+
+The binary is output to `dist/phantom`.
+
+### Build for All Platforms
+
+```bash
+make build-all
+```
+
+Outputs to `dist/`:
+- `phantom-linux-amd64`
+- `phantom-linux-arm64`
+- `phantom-darwin-amd64`
+- `phantom-darwin-arm64`
+
+### Install
+
+```bash
+make install
+```
+
+This installs the binary to `/usr/local/bin/phantom`.
 
 ### Prerequisites
 
 **Linux:**
 - Kernel with overlayfs support (most modern kernels)
+- Root privileges or appropriate capabilities for mounting
 
 **macOS:**
 - [macFUSE](https://osxfuse.github.io/) or [FUSE-T](https://github.com/macos-fuse-t/fuse-t)
@@ -39,7 +57,7 @@ make build
 
 ```bash
 # Create an overlay for a directory
-./phantom start /path/to/repo -n feature-a
+phantom start /path/to/repo -n feature-a
 
 # Output: /Users/user/.phantom/mnt/feature-a
 ```
@@ -47,7 +65,7 @@ make build
 The overlay mount point is printed to stdout, making it easy to capture in scripts:
 
 ```bash
-PHANTOM_PATH=$(./phantom start ~/myproject -n my-feature)
+PHANTOM_PATH=$(phantom start ~/myproject -n my-feature)
 cd "$PHANTOM_PATH"
 # Work in the isolated overlay...
 ```
@@ -55,40 +73,69 @@ cd "$PHANTOM_PATH"
 ### List Overlays
 
 ```bash
-./phantom list
+# List mounted overlays
+phantom list
+
+# List all overlays (including unmounted)
+phantom list --all
+
+# Output as JSON
+phantom list --format json
 ```
 
 ### Show Status
 
 ```bash
-./phantom status feature-a
+# Status of specific overlay
+phantom status feature-a
+
+# Status of all overlays
+phantom status
+
+# Output as JSON
+phantom status feature-a --format json
 ```
 
 ### Stop an Overlay
 
 ```bash
 # Unmount only
-./phantom stop feature-a
+phantom stop feature-a
 
 # Unmount and cleanup all data
-./phantom stop feature-a --cleanup
+phantom stop feature-a --cleanup
 
 # Push changes before stopping
-./phantom stop feature-a --push
+phantom stop feature-a --push
+
+# Force unmount if stuck
+phantom stop feature-a --force
 ```
 
 ### Run an Agent in Overlay Context
 
 ```bash
-./phantom run --agent "claude code" --task "implement auth" --base /path/to/repo
+phantom run --agent "claude code" --task "implement auth" --base /path/to/repo
 ```
 
-This sets environment variables for the agent:
+Options:
+- `--agent, -a` - Agent command to run (required)
+- `--task, -t` - Task description (required)
+- `--base, -b` - Base directory for overlay (required)
+- `--name, -n` - Overlay name (auto-generated if not specified)
+- `--branch` - Git branch name
+- `--timeout` - Timeout in minutes (default: from config, max: 1440)
+- `--cleanup` - Cleanup overlay after completion
+- `--push` - Push branch to remote on completion
+- `--persist, -p` - Keep overlay mounted after completion
+
+Environment variables set for the agent:
 - `OVERLAY_NAME` - Overlay name
 - `OVERLAY_PATH` - Mount point
 - `OVERLAY_BASE` - Original directory
 - `OVERLAY_BRANCH` - Git branch
 - `OVERLAY_TASK` - Task description
+- `OVERLAY_ENABLED` - Always "true"
 
 ## Commands
 
@@ -98,7 +145,7 @@ This sets environment variables for the agent:
 | `phantom stop <name>` | Unmount and optionally cleanup/push |
 | `phantom list` | List all active overlays |
 | `phantom status [<name>]` | Show overlay state |
-| `phantom run --agent <cmd> --task <desc>` | Run agent in overlay context |
+| `phantom run --agent <cmd> --task <desc> --base <dir>` | Run agent in overlay context |
 
 ### Global Flags
 
@@ -112,7 +159,7 @@ Configuration is stored in `~/.phantom/config.yaml`:
 ```yaml
 state_dir: "~/.phantom"
 logging:
-  level: info
+  level: info                    # trace, debug, info, warn, error, fatal
   file: "~/.phantom/phantom.log"
 overlay:
   persistent: false
@@ -122,16 +169,24 @@ git:
   branch_prefix: "phantom/"
   auto_push_on_stop: false
 darwin:
-  unionfs_path: ""  # auto-detect
+  unionfs_path: ""               # auto-detect
   fuse_options:
     - "cow"
 agent:
-  default_timeout_minutes: 60
+  default_timeout_minutes: 60    # max: 1440 (24 hours)
   cleanup_on_success: true
   cleanup_on_failure: false
 agent_env:
-  OVERLAY_ENABLED: "true"
+  - "OVERLAY_ENABLED=true"
 ```
+
+### Configuration Validation
+
+The configuration is validated on load:
+- `logging.level` must be one of: trace, debug, info, warn, error, fatal
+- `agent.default_timeout_minutes` must be between 0 and 1440
+- `overlay.auto_cleanup_days` cannot be negative
+- `state_dir` cannot be empty
 
 ## How It Works
 
@@ -157,20 +212,33 @@ unionfs-fuse -o cow upperdir=RW:lowerdir=RO /mnt/point
 
 ```
 ~/.phantom/
-├── config.yaml          # Configuration
+├── config.yaml          # Configuration (0600 permissions)
 ├── phantom.log          # Log file
-├── state/               # Overlay state files
+├── state/               # Overlay state files (0600 permissions)
 │   ├── feature-a.json
 │   └── feature-b.json
-├── overlays/            # Overlay data
+├── overlays/            # Overlay data (0700 permissions)
 │   ├── feature-a/
 │   │   ├── upper/       # Writable layer
 │   │   └── work/        # Work directory (Linux only)
 │   └── feature-b/
-└── mnt/                 # Mount points
+└── mnt/                 # Mount points (0700 permissions)
     ├── feature-a/
     └── feature-b/
 ```
+
+## Security
+
+Phantom implements several security measures:
+
+- **File permissions**: State and config files use 0600, directories use 0700
+- **Input validation**: Overlay names restricted to alphanumeric, hyphens, underscores
+- **Branch name validation**: Git branch names validated to prevent injection
+- **Symlink protection**: Base directories cannot be symlinks
+- **Path injection prevention**: Paths with commas rejected (overlayfs option injection)
+- **Process verification**: PIDs verified before killing (macOS)
+- **File locking**: State files use file locking to prevent race conditions
+- **No shell injection**: Agent commands parsed into arguments, not passed to shell
 
 ## Error Codes
 
@@ -183,26 +251,74 @@ unionfs-fuse -o cow upperdir=RW:lowerdir=RO /mnt/point
 | `GIT_FAILED` | Git operation failed |
 | `FUSE_NOT_FOUND` | macFUSE/FUSE-T not installed (macOS) |
 | `PERMISSION_DENIED` | Insufficient permissions |
+| `INVALID_CONFIG` | Configuration validation failed |
+| `OVERLAY_NOT_MOUNTED` | Overlay exists but is not mounted |
 
 ## Development
 
 ### Build
 
 ```bash
-make build
-```
-
-### Build for All Platforms
-
-```bash
-make build-all
+make build          # Build for current platform -> dist/phantom
+make build-all      # Build for all platforms -> dist/
+make build-linux    # Build for Linux only
+make build-darwin   # Build for macOS only
 ```
 
 ### Test
 
 ```bash
-make test
+make test           # Run all tests
+make test-short     # Run tests in short mode
+make coverage       # Run tests with coverage report
 ```
+
+### Quality Checks
+
+```bash
+make check          # Run fmt, vet, lint, and test
+make fmt            # Format code
+make vet            # Run go vet
+make lint           # Run golangci-lint
+```
+
+### Release
+
+```bash
+make dist           # Build all platforms + generate checksums
+make release        # Same as dist
+```
+
+### Run During Development
+
+```bash
+make dev            # Build and show help
+make run ARGS='start /path/to/repo -n test'  # Build and run with args
+```
+
+## Makefile Targets
+
+| Target | Description |
+|--------|-------------|
+| `build` | Build for current platform |
+| `build-all` | Build for all platforms |
+| `build-linux` | Build for Linux (amd64, arm64) |
+| `build-darwin` | Build for macOS (amd64, arm64) |
+| `build-platform` | Build for specific GOOS/GOARCH |
+| `dist` | Build all + checksums |
+| `release` | Create release |
+| `clean` | Remove build artifacts |
+| `install` | Install to /usr/local/bin |
+| `uninstall` | Remove from /usr/local/bin |
+| `test` | Run tests |
+| `test-short` | Run tests (short mode) |
+| `coverage` | Run tests with coverage |
+| `check` | Run all quality checks |
+| `fmt` | Format code |
+| `vet` | Run go vet |
+| `lint` | Run golangci-lint |
+| `deps` | Download dependencies |
+| `help` | Show help |
 
 ## License
 
