@@ -13,6 +13,9 @@ import (
 	"github.com/martinsuchenak/phantom/pkg/api"
 )
 
+// execCommand is a variable that points to exec.Command, but can be mocked for testing
+var execCommand = exec.Command
+
 // DarwinManager implements overlay filesystem management using unionfs-fuse
 type DarwinManager struct {
 	stateDir    string
@@ -135,23 +138,21 @@ func (m *DarwinManager) Mount(overlay *api.Overlay) error {
 		return api.NewError(api.ErrMountFailed, "failed to create upper directory", err)
 	}
 
-	// Build unionfs command
-	// unionfs-fuse -o cow upper=RW:lower=RO /mnt/point
-	fuseOptStr := strings.Join(m.fuseOptions, ",")
-	if fuseOptStr != "" {
-		fuseOptStr = "-o," + fuseOptStr
+	// Mount using unionfs-fuse
+	// Syntax: unionfs-fuse -o cow,max_files=32768 -o allow_other,use_ino,suid,dev /upper=RW:/base=RO /mount-point
+
+	// Prepare directories argument
+	// precise order matters: upper directory (RW) first, then base directory (RO)
+	dirs := fmt.Sprintf("%s=RW:%s=RO", overlay.UpperDir, overlay.BaseDir)
+
+	args := []string{
+		"-o", strings.Join(m.fuseOptions, ","), // Use configured options
+		"-o", "allow_other,use_ino,suid,dev", // Standard options for overlay behavior
+		dirs,
+		overlay.MountPoint,
 	}
 
-	// Union spec: upperdir=RW:lowerdir=RO
-	unionSpec := fmt.Sprintf("%s=RW:%s=RO", overlay.UpperDir, overlay.BaseDir)
-
-	args := []string{}
-	if fuseOptStr != "" {
-		args = append(args, strings.Split(fuseOptStr, ",")...)
-	}
-	args = append(args, unionSpec, overlay.MountPoint)
-
-	cmd := exec.Command(m.unionfsPath, args...)
+	cmd := execCommand(m.unionfsPath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -191,14 +192,11 @@ func (m *DarwinManager) Unmount(overlay *api.Overlay) error {
 		return nil // Already unmounted
 	}
 
-	// Use umount to unmount
-	cmd := exec.Command("umount", overlay.MountPoint)
+	// Try normal unmount first
+	cmd := execCommand("umount", overlay.MountPoint)
 	if err := cmd.Run(); err != nil {
-		// Try force unmount
-		cmd = exec.Command("umount", "-f", overlay.MountPoint)
-		if err := cmd.Run(); err != nil {
-			return api.NewError(api.ErrUnmountFailed, "failed to unmount overlay", err)
-		}
+		// If normal unmount fails, try force unmount
+		return m.ForceUnmount(overlay)
 	}
 
 	// Kill the unionfs-fuse process if we have its PID
@@ -215,7 +213,7 @@ func (m *DarwinManager) Unmount(overlay *api.Overlay) error {
 // IsMounted checks if an overlay is currently mounted
 func (m *DarwinManager) IsMounted(overlay *api.Overlay) (bool, error) {
 	// Use mount command to check if the mount point exists
-	cmd := exec.Command("mount")
+	cmd := execCommand("mount")
 	output, err := cmd.Output()
 	if err != nil {
 		return false, err
@@ -321,7 +319,7 @@ func (m *DarwinManager) Prune() error {
 // ForceUnmount forces unmount of a stuck overlay
 func (m *DarwinManager) ForceUnmount(overlay *api.Overlay) error {
 	// Use umount -f to force unmount
-	cmd := exec.Command("umount", "-f", overlay.MountPoint)
+	cmd := execCommand("umount", "-f", overlay.MountPoint)
 	if err := cmd.Run(); err != nil {
 		return api.NewError(api.ErrUnmountFailed, "failed to force unmount overlay", err)
 	}
