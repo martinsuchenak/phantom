@@ -13,6 +13,24 @@ A Go-based CLI tool for managing overlay filesystems to enable multiple AI agent
 
 ## Installation
 
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap martinsuchenak/tap
+brew install phantom
+```
+
+### Download Binary
+
+Download the latest release from [GitHub Releases](https://github.com/martinsuchenak/phantom/releases).
+
+```bash
+# Example for Linux amd64
+curl -LO https://github.com/martinsuchenak/phantom/releases/latest/download/phantom_Linux_amd64.tar.gz
+tar xzf phantom_Linux_amd64.tar.gz
+sudo mv phantom /usr/local/bin/
+```
+
 ### Build from Source
 
 ```bash
@@ -33,7 +51,7 @@ Outputs to `dist/`:
 - `phantom-darwin-amd64`
 - `phantom-darwin-arm64`
 
-### Install
+### Install from Source
 
 ```bash
 make install
