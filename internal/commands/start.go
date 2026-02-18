@@ -45,15 +45,15 @@ func NewStartCommand() *cli.Command {
 				Required: true,
 			},
 		},
-		MinArgs: 1,
-		MaxArgs: 1,
-		Run:     doStart,
+		Run: doStart,
 	}
 }
 
 func doStart(ctx context.Context, cmd *cli.Command) error {
-	args := cmd.GetArgs()
-	baseDir := args[0]
+	baseDir := cmd.GetStringArg("base-dir")
+	if baseDir == "" {
+		return fmt.Errorf("base directory is required")
+	}
 	name := cmd.GetString("name")
 	branch := cmd.GetString("branch")
 	persistent := cmd.GetBool("persistent")

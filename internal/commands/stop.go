@@ -38,15 +38,15 @@ func NewStopCommand() *cli.Command {
 				Required: true,
 			},
 		},
-		MinArgs: 1,
-		MaxArgs: 1,
-		Run:     doStop,
+		Run: doStop,
 	}
 }
 
 func doStop(ctx context.Context, cmd *cli.Command) error {
-	args := cmd.GetArgs()
-	name := args[0]
+	name := cmd.GetStringArg("name")
+	if name == "" {
+		return fmt.Errorf("overlay name is required")
+	}
 	doCleanup := cmd.GetBool("cleanup")
 	doPush := cmd.GetBool("push")
 	force := cmd.GetBool("force")

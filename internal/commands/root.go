@@ -35,7 +35,7 @@ func Execute() {
 			},
 			&cli.BoolFlag{
 				Name:         "verbose",
-				Aliases:      []string{"v"},
+				Aliases:      []string{"V"},
 				Usage:        "Verbose output",
 				AssignTo:     &verbose,
 				Global:       true,

@@ -33,18 +33,12 @@ func NewStatusCommand() *cli.Command {
 				Required: false,
 			},
 		},
-		MinArgs: 0,
-		MaxArgs: 1,
-		Run:     doStatus,
+		Run: doStatus,
 	}
 }
 
 func doStatus(ctx context.Context, cmd *cli.Command) error {
-	args := cmd.GetArgs()
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
+	name := cmd.GetStringArg("name")
 	format := cmd.GetString("format")
 
 	return processStatus(ctx, name, format)
