@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/agent"
+	"github.com/martinsuchenak/phantom/internal/config"
 	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
@@ -55,8 +56,8 @@ func NewRunCommand() *cli.Command {
 			},
 			&cli.IntFlag{
 				Name:         "timeout",
-				Usage:        "Timeout for the agent command in minutes",
-				DefaultValue: 60,
+				Usage:        "Timeout for the agent command in minutes (max 1440)",
+				DefaultValue: 0, // 0 means use config default
 			},
 			&cli.BoolFlag{
 				Name:  "cleanup",
@@ -101,12 +102,18 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 }
 
 func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch string, timeoutMinutes int, doCleanup, doPush, persist bool) (int, error) {
-	timeout := time.Duration(timeoutMinutes) * time.Minute
-
-	// Override timeout from config if available and not explicitly set
-	// Note: We can't check 'if flag set' easily here without passing map, but we can assume default 60
-	if cfg != nil && cfg.Agent.DefaultTimeoutMinutes > 0 && timeoutMinutes == 60 { // Assuming 60 is default
+	// Determine timeout: use flag if provided, otherwise use config default
+	var timeout time.Duration
+	if timeoutMinutes > 0 {
+		// Validate timeout bounds
+		if timeoutMinutes > config.MaxTimeoutMinutes {
+			return 0, fmt.Errorf("timeout cannot exceed %d minutes (24 hours)", config.MaxTimeoutMinutes)
+		}
+		timeout = time.Duration(timeoutMinutes) * time.Minute
+	} else if cfg != nil && cfg.Agent.DefaultTimeoutMinutes > 0 {
 		timeout = time.Duration(cfg.Agent.DefaultTimeoutMinutes) * time.Minute
+	} else {
+		timeout = 60 * time.Minute // fallback default
 	}
 
 	// Get absolute path for base directory
@@ -118,6 +125,13 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 	// Generate name if not provided
 	if name == "" {
 		name = fmt.Sprintf("agent-%d", time.Now().Unix())
+	}
+
+	// Validate branch name if provided
+	if branch != "" {
+		if err := validateBranchName(branch); err != nil {
+			return 0, err
+		}
 	}
 
 	log.Debug("Running agent in overlay %q for %q", name, absBaseDir)
@@ -175,11 +189,11 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 			branchExists, _ := gitOps.BranchExists(ctx, absBaseDir, branch)
 			if !branchExists {
 				if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branch, ""); err != nil {
-					log.Debug("Failed to create branch: %v", err)
+					log.Warn("Failed to create branch %s: %v", branch, err)
 				}
 			} else {
 				if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branch); err != nil {
-					log.Debug("Failed to switch to branch: %v", err)
+					log.Warn("Failed to switch to branch %s: %v", branch, err)
 				}
 			}
 		}

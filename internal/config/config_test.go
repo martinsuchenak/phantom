@@ -23,8 +23,8 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.Git.AutoBranch {
 		t.Error("expected AutoBranch to be true by default")
 	}
-	if cfg.Git.BranchPrefix != "overlay/" {
-		t.Errorf("expected BranchPrefix to be 'overlay/', got %s", cfg.Git.BranchPrefix)
+	if cfg.Git.BranchPrefix != "phantom/" {
+		t.Errorf("expected BranchPrefix to be 'phantom/', got %s", cfg.Git.BranchPrefix)
 	}
 	if cfg.Agent.DefaultTimeoutMinutes != 60 {
 		t.Errorf("expected DefaultTimeoutMinutes to be 60, got %d", cfg.Agent.DefaultTimeoutMinutes)
@@ -212,5 +212,126 @@ func TestConfigWithAgentEnv(t *testing.T) {
 
 	if len(loaded.AgentEnv) != 2 {
 		t.Errorf("expected 2 agent env vars, got %d", len(loaded.AgentEnv))
+	}
+}
+
+
+func TestConfigValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		modify      func(*Config)
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "valid config",
+			modify:      func(c *Config) {},
+			expectError: false,
+		},
+		{
+			name: "invalid log level",
+			modify: func(c *Config) {
+				c.Logging.Level = "invalid"
+			},
+			expectError: true,
+			errorMsg:    "invalid log level",
+		},
+		{
+			name: "negative timeout",
+			modify: func(c *Config) {
+				c.Agent.DefaultTimeoutMinutes = -1
+			},
+			expectError: true,
+			errorMsg:    "cannot be negative",
+		},
+		{
+			name: "timeout too large",
+			modify: func(c *Config) {
+				c.Agent.DefaultTimeoutMinutes = MaxTimeoutMinutes + 1
+			},
+			expectError: true,
+			errorMsg:    "cannot exceed",
+		},
+		{
+			name: "negative cleanup days",
+			modify: func(c *Config) {
+				c.Overlay.AutoCleanupDays = -1
+			},
+			expectError: true,
+			errorMsg:    "cannot be negative",
+		},
+		{
+			name: "empty state dir",
+			modify: func(c *Config) {
+				c.StateDir = ""
+			},
+			expectError: true,
+			errorMsg:    "cannot be empty",
+		},
+		{
+			name: "valid log levels",
+			modify: func(c *Config) {
+				c.Logging.Level = "debug"
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			tt.modify(cfg)
+
+			err := cfg.Validate()
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				} else if tt.errorMsg != "" && !contains(err.Error(), tt.errorMsg) {
+					t.Errorf("expected error containing %q, got %q", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestConfigFilePermissions(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-config-perm-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	cfg := DefaultConfig()
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	// Check file permissions
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("failed to stat config file: %v", err)
+	}
+
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("expected file permissions 0600, got %v", info.Mode().Perm())
 	}
 }

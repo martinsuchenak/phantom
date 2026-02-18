@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/internal/state"
@@ -28,7 +29,7 @@ func NewStartCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:    "branch",
 				Aliases: []string{"b"},
-				Usage:   "Git branch name (default: overlay/<name>)",
+				Usage:   "Git branch name (default: phantom/<name>)",
 				EnvVars: []string{"OVERLAY_BRANCH"},
 			},
 			&cli.BoolFlag{
@@ -83,6 +84,13 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 		return fmt.Errorf("invalid overlay name %q: must contain only alphanumeric characters, hyphens, and underscores", name)
 	}
 
+	// Validate branch name if provided (prevent git injection)
+	if branch != "" {
+		if err := validateBranchName(branch); err != nil {
+			return err
+		}
+	}
+
 	log.Debug("Creating overlay %q for %q", name, absBaseDir)
 
 	// Initialize state store
@@ -130,6 +138,10 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 		return err
 	}
 
+	// Track if we need to rollback
+	var gitErrors []string
+	stashApplied := false
+
 	// Handle git branch creation if applicable
 	if isGit && branch != "" {
 		log.Debug("Creating git branch %q", branch)
@@ -137,13 +149,18 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 		// Check for uncommitted changes
 		hasChanges, err := gitOps.HasUncommittedChanges(ctx, absBaseDir)
 		if err != nil {
-			log.Debug("Failed to check for uncommitted changes: %v", err)
+			gitErrors = append(gitErrors, fmt.Sprintf("failed to check uncommitted changes: %v", err))
 		}
 
 		if hasChanges {
+			// Warn user about auto-stashing
+			log.Warn("Uncommitted changes detected, auto-stashing (stash name: overlay-auto-stash-%s)", name)
+
 			// Stash changes before creating branch
 			if err := gitOps.Stash(ctx, absBaseDir, "overlay-auto-stash-"+name); err != nil {
-				log.Debug("Failed to stash changes: %v", err)
+				gitErrors = append(gitErrors, fmt.Sprintf("failed to stash changes: %v", err))
+			} else {
+				stashApplied = true
 			}
 		}
 
@@ -152,21 +169,27 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 		if branchExists {
 			// Switch to existing branch
 			if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branch); err != nil {
-				log.Debug("Failed to switch to branch: %v", err)
+				gitErrors = append(gitErrors, fmt.Sprintf("failed to switch to branch %s: %v", branch, err))
 			}
 		} else {
 			// Create new branch in the overlay mount
 			if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branch, ""); err != nil {
-				log.Debug("Failed to create branch: %v", err)
+				gitErrors = append(gitErrors, fmt.Sprintf("failed to create branch %s: %v", branch, err))
 			}
 		}
 
-		if hasChanges {
+		if stashApplied {
 			// Pop stash in the overlay
 			if err := gitOps.StashPop(ctx, ovl.MountPoint); err != nil {
-				log.Debug("Failed to pop stash: %v", err)
+				gitErrors = append(gitErrors, fmt.Sprintf("failed to pop stash: %v", err))
+				log.Warn("Stashed changes remain in base repo, run 'git stash pop' manually if needed")
 			}
 		}
+	}
+
+	// Report git errors at warn level so users see them
+	for _, gitErr := range gitErrors {
+		log.Warn("Git: %s", gitErr)
 	}
 
 	// Save state
@@ -178,6 +201,34 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 
 	// Output the mount point path (this is what scripts can capture)
 	log.Info(ovl.MountPoint)
+
+	return nil
+}
+
+// validateBranchName checks if a branch name is safe to use with git
+func validateBranchName(branch string) error {
+	// Reject branch names that could be interpreted as git options
+	if strings.HasPrefix(branch, "-") {
+		return fmt.Errorf("invalid branch name %q: cannot start with '-'", branch)
+	}
+
+	// Reject branch names with potentially dangerous characters
+	invalidChars := []string{"..", "~", "^", ":", "?", "*", "[", "\\", " ", "\t", "\n"}
+	for _, char := range invalidChars {
+		if strings.Contains(branch, char) {
+			return fmt.Errorf("invalid branch name %q: contains invalid character %q", branch, char)
+		}
+	}
+
+	// Reject empty or whitespace-only names
+	if strings.TrimSpace(branch) == "" {
+		return fmt.Errorf("branch name cannot be empty")
+	}
+
+	// Reject names ending with .lock
+	if strings.HasSuffix(branch, ".lock") {
+		return fmt.Errorf("invalid branch name %q: cannot end with '.lock'", branch)
+	}
 
 	return nil
 }

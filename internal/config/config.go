@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -32,15 +33,15 @@ type Overlay struct {
 
 // Git configuration
 type Git struct {
-	AutoBranch      bool   `yaml:"auto_branch"`
-	BranchPrefix    string `yaml:"branch_prefix"`
-	AutoPushOnStop  bool   `yaml:"auto_push_on_stop"`
+	AutoBranch     bool   `yaml:"auto_branch"`
+	BranchPrefix   string `yaml:"branch_prefix"`
+	AutoPushOnStop bool   `yaml:"auto_push_on_stop"`
 }
 
 // Darwin (macOS) specific configuration
 type Darwin struct {
-	UnionFSPath  string   `yaml:"unionfs_path"`
-	FUSEOptions  []string `yaml:"fuse_options"`
+	UnionFSPath string   `yaml:"unionfs_path"`
+	FUSEOptions []string `yaml:"fuse_options"`
 }
 
 // Agent configuration
@@ -48,6 +49,19 @@ type Agent struct {
 	DefaultTimeoutMinutes int  `yaml:"default_timeout_minutes"`
 	CleanupOnSuccess      bool `yaml:"cleanup_on_success"`
 	CleanupOnFailure      bool `yaml:"cleanup_on_failure"`
+}
+
+// MaxTimeoutMinutes is the maximum allowed timeout value
+const MaxTimeoutMinutes = 1440 // 24 hours
+
+// ValidLogLevels contains the allowed log level values
+var ValidLogLevels = map[string]bool{
+	"trace": true,
+	"debug": true,
+	"info":  true,
+	"warn":  true,
+	"error": true,
+	"fatal": true,
 }
 
 // DefaultConfig returns the default configuration
@@ -59,7 +73,7 @@ func DefaultConfig() *Config {
 		StateDir: stateDir,
 		Logging: Logging{
 			Level: "info",
-			File:  filepath.Join(stateDir, "overlay.log"),
+			File:  filepath.Join(stateDir, "phantom.log"),
 		},
 		Overlay: Overlay{
 			Persistent:      false,
@@ -67,7 +81,7 @@ func DefaultConfig() *Config {
 		},
 		Git: Git{
 			AutoBranch:     true,
-			BranchPrefix:   "overlay/",
+			BranchPrefix:   "phantom/",
 			AutoPushOnStop: false,
 		},
 		Darwin: Darwin{
@@ -93,7 +107,7 @@ func Load(path string) (*Config, error) {
 	// If no path specified, use default
 	if path == "" {
 		homeDir, _ := os.UserHomeDir()
-		path = filepath.Join(homeDir, ".overlay", "config.yaml")
+		path = filepath.Join(homeDir, ".phantom", "config.yaml")
 	}
 
 	// Check if config file exists
@@ -115,18 +129,51 @@ func Load(path string) (*Config, error) {
 	cfg.StateDir = expandHome(cfg.StateDir)
 	cfg.Logging.File = expandHome(cfg.Logging.File)
 
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	return cfg, nil
+}
+
+// Validate checks the configuration for invalid values
+func (c *Config) Validate() error {
+	// Validate log level
+	if c.Logging.Level != "" && !ValidLogLevels[c.Logging.Level] {
+		return fmt.Errorf("invalid log level %q: must be one of trace, debug, info, warn, error, fatal", c.Logging.Level)
+	}
+
+	// Validate timeout
+	if c.Agent.DefaultTimeoutMinutes < 0 {
+		return fmt.Errorf("default_timeout_minutes cannot be negative")
+	}
+	if c.Agent.DefaultTimeoutMinutes > MaxTimeoutMinutes {
+		return fmt.Errorf("default_timeout_minutes cannot exceed %d (24 hours)", MaxTimeoutMinutes)
+	}
+
+	// Validate auto cleanup days
+	if c.Overlay.AutoCleanupDays < 0 {
+		return fmt.Errorf("auto_cleanup_days cannot be negative")
+	}
+
+	// Validate state directory is not empty
+	if c.StateDir == "" {
+		return fmt.Errorf("state_dir cannot be empty")
+	}
+
+	return nil
 }
 
 // Save saves configuration to a file
 func (c *Config) Save(path string) error {
 	if path == "" {
 		homeDir, _ := os.UserHomeDir()
-		path = filepath.Join(homeDir, ".overlay", "config.yaml")
+		path = filepath.Join(homeDir, ".phantom", "config.yaml")
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 
@@ -135,7 +182,7 @@ func (c *Config) Save(path string) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // GetStatePath returns the full path to the state directory

@@ -21,7 +21,7 @@ type LinuxManager struct {
 }
 
 // NewManager creates a new Linux overlay manager
-func NewManager(stateDir string, unionfsPath string, fuseOptions []string) (*LinuxManager, error) {
+func NewManager(stateDir string, _ string, _ []string) (*LinuxManager, error) {
 	overlaysDir := filepath.Join(stateDir, "overlays")
 	mountDir := filepath.Join(stateDir, "mnt")
 
@@ -41,10 +41,13 @@ func NewManager(stateDir string, unionfsPath string, fuseOptions []string) (*Lin
 
 // Create creates and mounts a new overlay filesystem
 func (m *LinuxManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
-	// Validate base directory
-	info, err := os.Stat(opts.BaseDir)
+	// Validate base directory - check for symlinks
+	info, err := os.Lstat(opts.BaseDir)
 	if err != nil {
 		return nil, api.NewError(api.ErrMountFailed, "base directory does not exist", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, api.NewError(api.ErrMountFailed, "base directory cannot be a symlink", nil)
 	}
 	if !info.IsDir() {
 		return nil, api.NewError(api.ErrMountFailed, "base path is not a directory", nil)

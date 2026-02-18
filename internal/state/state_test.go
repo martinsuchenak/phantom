@@ -242,4 +242,13 @@ func TestStoreFileFormat(t *testing.T) {
 	if !bytes.Contains(data, []byte(`"branch": "test-branch"`)) {
 		t.Error("expected JSON to contain branch field")
 	}
+
+	// Verify file permissions are 0600
+	info, err := os.Stat(statePath)
+	if err != nil {
+		t.Fatalf("failed to stat state file: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("expected file permissions 0600, got %v", info.Mode().Perm())
+	}
 }

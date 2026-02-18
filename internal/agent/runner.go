@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/config"
@@ -43,8 +44,9 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	r.log.Info("Task: %s", opts.Task)
 	r.log.Info("Overlay: %s", ovl.MountPoint)
 
-	// Build the command
-	cmd := exec.CommandContext(ctx, "sh", "-c", opts.Agent)
+	// Build the command - parse agent string into command and args
+	// This avoids shell injection by not using sh -c
+	cmd := r.buildCommand(ctx, opts.Agent)
 	cmd.Dir = ovl.MountPoint
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -79,6 +81,56 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	}
 
 	return exitCode, err
+}
+
+// buildCommand parses the agent string and creates an exec.Cmd
+// It handles quoted arguments and avoids shell injection
+func (r *Runner) buildCommand(ctx context.Context, agent string) *exec.Cmd {
+	args := parseCommandLine(agent)
+	if len(args) == 0 {
+		// Fallback to empty command (will fail gracefully)
+		return exec.CommandContext(ctx, "")
+	}
+	return exec.CommandContext(ctx, args[0], args[1:]...)
+}
+
+// parseCommandLine splits a command line string into arguments
+// respecting quoted strings
+func parseCommandLine(cmdLine string) []string {
+	var args []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+
+	for _, r := range cmdLine {
+		switch {
+		case r == '"' || r == '\'':
+			if inQuote && r == quoteChar {
+				inQuote = false
+				quoteChar = 0
+			} else if !inQuote {
+				inQuote = true
+				quoteChar = r
+			} else {
+				current.WriteRune(r)
+			}
+		case r == ' ' || r == '\t':
+			if inQuote {
+				current.WriteRune(r)
+			} else if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args
 }
 
 // buildEnv builds the environment variables for the agent

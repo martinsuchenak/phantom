@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -35,12 +36,11 @@ func NewListCommand() *cli.Command {
 
 // listOverlayInfo contains info for displaying in list
 type listOverlayInfo struct {
-	Name    string
-	Mounted bool
-	Path    string
-	Branch  string
-	Uptime  time.Duration
-	Size    int64
+	Name    string        `json:"name"`
+	Mounted bool          `json:"mounted"`
+	Path    string        `json:"path"`
+	Branch  string        `json:"branch"`
+	Uptime  time.Duration `json:"-"`
 }
 
 func doList(ctx context.Context, cmd *cli.Command) error {
@@ -135,14 +135,10 @@ func printListSimple(infos []listOverlayInfo) error {
 }
 
 func printListJSON(infos []listOverlayInfo) error {
-	fmt.Println("[")
-	for i, info := range infos {
-		if i > 0 {
-			fmt.Println(",")
-		}
-		fmt.Printf(`  {"name": "%s", "mounted": %v, "path": "%s", "branch": "%s"}`,
-			info.Name, info.Mounted, info.Path, info.Branch)
+	data, err := json.MarshalIndent(infos, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
-	fmt.Println("\n]")
+	fmt.Println(string(data))
 	return nil
 }

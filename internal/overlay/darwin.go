@@ -3,10 +3,12 @@
 package overlay
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,10 +87,13 @@ func findUnionFS() string {
 
 // Create creates and mounts a new overlay filesystem
 func (m *DarwinManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
-	// Validate base directory
-	info, err := os.Stat(opts.BaseDir)
+	// Validate base directory - check for symlinks
+	info, err := os.Lstat(opts.BaseDir)
 	if err != nil {
 		return nil, api.NewError(api.ErrMountFailed, "base directory does not exist", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, api.NewError(api.ErrMountFailed, "base directory cannot be a symlink", nil)
 	}
 	if !info.IsDir() {
 		return nil, api.NewError(api.ErrMountFailed, "base path is not a directory", nil)
@@ -164,18 +169,19 @@ func (m *DarwinManager) Mount(overlay *api.Overlay) error {
 	// Store PID for later management
 	overlay.PID = cmd.Process.Pid
 
-	// Wait a bit for mount to complete
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify mount succeeded
-	mounted, err := m.IsMounted(overlay)
-	if err != nil {
-		cmd.Process.Kill()
-		return api.NewError(api.ErrMountFailed, "failed to verify mount", err)
+	// Poll for mount completion with timeout
+	mounted := false
+	for i := 0; i < 20; i++ { // 2 second timeout (20 * 100ms)
+		time.Sleep(100 * time.Millisecond)
+		if m, _ := m.IsMounted(overlay); m {
+			mounted = true
+			break
+		}
 	}
+
 	if !mounted {
 		cmd.Process.Kill()
-		return api.NewError(api.ErrMountFailed, "mount verification failed", nil)
+		return api.NewError(api.ErrMountFailed, "mount verification failed after timeout", nil)
 	}
 
 	return nil
@@ -199,15 +205,41 @@ func (m *DarwinManager) Unmount(overlay *api.Overlay) error {
 		return m.ForceUnmount(overlay)
 	}
 
-	// Kill the unionfs-fuse process if we have its PID
-	if overlay.PID > 0 {
-		if process, err := os.FindProcess(overlay.PID); err == nil {
-			process.Kill()
-		}
-		overlay.PID = 0
-	}
+	// Kill the unionfs-fuse process if we have its PID and it's verified
+	m.killUnionFSProcess(overlay)
 
 	return nil
+}
+
+// killUnionFSProcess safely kills the unionfs-fuse process after verifying it
+func (m *DarwinManager) killUnionFSProcess(overlay *api.Overlay) {
+	if overlay.PID <= 0 {
+		return
+	}
+
+	// Verify the process is actually unionfs-fuse before killing
+	if !m.isUnionFSProcess(overlay.PID) {
+		overlay.PID = 0
+		return
+	}
+
+	if process, err := os.FindProcess(overlay.PID); err == nil {
+		process.Kill()
+	}
+	overlay.PID = 0
+}
+
+// isUnionFSProcess checks if a PID belongs to a unionfs-fuse process
+func (m *DarwinManager) isUnionFSProcess(pid int) bool {
+	// Use ps to check the process name
+	cmd := execCommand("ps", "-p", strconv.Itoa(pid), "-o", "comm=")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	procName := strings.TrimSpace(string(output))
+	return strings.Contains(procName, "unionfs") || strings.Contains(procName, "fuse")
 }
 
 // IsMounted checks if an overlay is currently mounted
@@ -220,9 +252,9 @@ func (m *DarwinManager) IsMounted(overlay *api.Overlay) (bool, error) {
 	}
 
 	// Check if our mount point appears in mount output
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, overlay.MountPoint) {
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), overlay.MountPoint) {
 			return true, nil
 		}
 	}
@@ -325,12 +357,7 @@ func (m *DarwinManager) ForceUnmount(overlay *api.Overlay) error {
 	}
 
 	// Kill the unionfs-fuse process if we have its PID
-	if overlay.PID > 0 {
-		if process, err := os.FindProcess(overlay.PID); err == nil {
-			process.Kill()
-		}
-		overlay.PID = 0
-	}
+	m.killUnionFSProcess(overlay)
 
 	return nil
 }

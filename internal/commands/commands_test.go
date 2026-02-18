@@ -587,7 +587,7 @@ func TestStartCommand_WithBranch(t *testing.T) {
 		},
 		Git: config.Git{
 			AutoBranch:   true,
-			BranchPrefix: "overlay/",
+			BranchPrefix: "phantom/",
 		},
 	}
 	mockLog := &MockLogger{}

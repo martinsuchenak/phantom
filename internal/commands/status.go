@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -103,16 +104,23 @@ func showAllStatus(store *state.Store, mgr overlayManager, format string) error 
 	}
 
 	if format == "json" {
-		fmt.Println("[")
-		for i, ovl := range overlays {
-			if i > 0 {
-				fmt.Println(",")
-			}
-			status, _ := mgr.GetStatus(ovl)
-			fmt.Printf(`  {"name": "%s", "mounted": %v}`,
-				ovl.Name, status != nil && status.Mounted)
+		type overlayStatusJSON struct {
+			Name    string `json:"name"`
+			Mounted bool   `json:"mounted"`
 		}
-		fmt.Println("\n]")
+		var statuses []overlayStatusJSON
+		for _, ovl := range overlays {
+			status, _ := mgr.GetStatus(ovl)
+			statuses = append(statuses, overlayStatusJSON{
+				Name:    ovl.Name,
+				Mounted: status != nil && status.Mounted,
+			})
+		}
+		data, err := json.MarshalIndent(statuses, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		fmt.Println(string(data))
 		return nil
 	}
 
@@ -175,27 +183,37 @@ func printStatusTable(ctx context.Context, ovl *api.Overlay, status *api.Overlay
 	return nil
 }
 
+// statusJSONOutput represents the JSON output structure for status
+type statusJSONOutput struct {
+	Name       string `json:"name"`
+	Mounted    bool   `json:"mounted"`
+	MountPoint string `json:"mount_point"`
+	BaseDir    string `json:"base_dir"`
+	UpperDir   string `json:"upper_dir"`
+	Branch     string `json:"branch"`
+	Persistent bool   `json:"persistent"`
+	Uptime     string `json:"uptime"`
+	SizeBytes  int64  `json:"size_bytes"`
+}
+
 func printStatusJSON(ovl *api.Overlay, status *api.OverlayStatus) error {
-	fmt.Printf(`{
-  "name": "%s",
-  "mounted": %v,
-  "mount_point": "%s",
-  "base_dir": "%s",
-  "upper_dir": "%s",
-  "branch": "%s",
-  "persistent": %v,
-  "uptime": "%s",
-  "size_bytes": %d
-}`,
-		ovl.Name,
-		status.Mounted,
-		ovl.MountPoint,
-		ovl.BaseDir,
-		ovl.UpperDir,
-		ovl.Branch,
-		ovl.Persistent,
-		formatDuration(status.Uptime),
-		status.SizeBytes)
-	fmt.Println()
+	output := statusJSONOutput{
+		Name:       ovl.Name,
+		Mounted:    status.Mounted,
+		MountPoint: ovl.MountPoint,
+		BaseDir:    ovl.BaseDir,
+		UpperDir:   ovl.UpperDir,
+		Branch:     ovl.Branch,
+		Persistent: ovl.Persistent,
+		Uptime:     formatDuration(status.Uptime),
+		SizeBytes:  status.SizeBytes,
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	fmt.Println(string(data))
 	return nil
 }

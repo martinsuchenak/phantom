@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/martinsuchenak/phantom/pkg/api"
 )
@@ -23,7 +24,17 @@ func NewStore(stateDir string) (*Store, error) {
 	return &Store{stateDir: statePath}, nil
 }
 
-// Save persists an overlay's state to disk
+// lockFile acquires an exclusive lock on a file
+func lockFile(f *os.File) error {
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+}
+
+// unlockFile releases the lock on a file
+func unlockFile(f *os.File) error {
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+}
+
+// Save persists an overlay's state to disk with file locking
 func (s *Store) Save(overlay *api.Overlay) error {
 	if overlay.Name == "" {
 		return fmt.Errorf("overlay name is required")
@@ -35,25 +46,48 @@ func (s *Store) Save(overlay *api.Overlay) error {
 		return fmt.Errorf("failed to marshal overlay state: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	// Open file with exclusive lock
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open state file: %w", err)
+	}
+	defer f.Close()
+
+	if err := lockFile(f); err != nil {
+		return fmt.Errorf("failed to lock state file: %w", err)
+	}
+	defer unlockFile(f)
+
+	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("failed to write overlay state: %w", err)
 	}
 
 	return nil
 }
 
-// Load retrieves an overlay's state from disk
+// Load retrieves an overlay's state from disk with file locking
 func (s *Store) Load(name string) (*api.Overlay, error) {
 	if name == "" {
 		return nil, fmt.Errorf("overlay name is required")
 	}
 
 	path := s.overlayPath(name)
-	data, err := os.ReadFile(path)
+	f, err := os.OpenFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, api.NewError(api.ErrNotFound, fmt.Sprintf("overlay %q not found", name), err)
 		}
+		return nil, fmt.Errorf("failed to open overlay state: %w", err)
+	}
+	defer f.Close()
+
+	if err := lockFile(f); err != nil {
+		return nil, fmt.Errorf("failed to lock state file: %w", err)
+	}
+	defer unlockFile(f)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read overlay state: %w", err)
 	}
 
@@ -87,8 +121,7 @@ func (s *Store) LoadAll() ([]*api.Overlay, error) {
 		name := entry.Name()[:len(entry.Name())-5] // remove .json extension
 		overlay, err := s.Load(name)
 		if err != nil {
-			// Log warning but continue loading others
-			fmt.Fprintf(os.Stderr, "warning: failed to load overlay %q: %v\n", name, err)
+			// Continue loading others but don't write to stderr directly
 			continue
 		}
 		overlays = append(overlays, overlay)
