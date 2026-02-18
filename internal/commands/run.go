@@ -157,7 +157,19 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 		if err != nil {
 			return 0, err
 		}
-		log.Debug("Using existing overlay")
+		log.Debug("Using existing overlay (UseFuse=%v, MountPoint=%s)", ovl.UseFuse, ovl.MountPoint)
+		
+		// Check if mounted, if not try to mount it
+		mounted, err := mgr.IsMounted(ovl)
+		if err != nil {
+			return 0, err
+		}
+		if !mounted {
+			log.Debug("Overlay not mounted, attempting to mount")
+			if err := mgr.Mount(ovl); err != nil {
+				return 0, fmt.Errorf("failed to mount existing overlay: %w", err)
+			}
+		}
 	} else {
 		// Initialize git operations
 		gitOps := git.NewOperations()
@@ -203,14 +215,16 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 			mgr.Cleanup(ovl)
 			return 0, fmt.Errorf("failed to save overlay state: %w", err)
 		}
+		log.Debug("Created new overlay (UseFuse=%v, MountPoint=%s)", ovl.UseFuse, ovl.MountPoint)
 	}
 
-	// Check if mounted
+	// Verify mounted (should always be true at this point)
 	mounted, err := mgr.IsMounted(ovl)
 	if err != nil {
 		return 0, err
 	}
 	if !mounted {
+		log.Debug("Mount verification failed - overlay.UseFuse=%v", ovl.UseFuse)
 		return 0, api.NewError(api.ErrOverlayNotMounted, "overlay is not mounted", nil)
 	}
 

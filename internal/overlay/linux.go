@@ -168,7 +168,16 @@ func (m *LinuxManager) Mount(overlay *api.Overlay) error {
 		return api.NewError(api.ErrMountFailed, "failed to create work directory", err)
 	}
 
-	if m.useFuse {
+	// Use overlay's UseFuse flag if set, otherwise use manager's setting
+	useFuse := overlay.UseFuse || m.useFuse
+	if useFuse {
+		// Ensure we have fuse-overlayfs path
+		if m.fuseOverlayPath == "" {
+			m.fuseOverlayPath = findFuseOverlay()
+			if m.fuseOverlayPath == "" {
+				return api.NewError(api.ErrFUSENotFound, "fuse-overlayfs not found", nil)
+			}
+		}
 		return m.mountFuse(overlay)
 	}
 	return m.mountNative(overlay)
@@ -211,8 +220,10 @@ func (m *LinuxManager) mountFuse(overlay *api.Overlay) error {
 	args = append(args, overlay.MountPoint)
 
 	cmd := execCommand(m.fuseOverlayPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	// Capture stderr for error reporting
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 
 	// Start fuse-overlayfs
 	if err := cmd.Start(); err != nil {
@@ -224,17 +235,28 @@ func (m *LinuxManager) mountFuse(overlay *api.Overlay) error {
 
 	// Poll for mount completion with timeout
 	mounted := false
-	for i := 0; i < 20; i++ { // 2 second timeout (20 * 100ms)
+	for i := 0; i < 30; i++ { // 3 second timeout (30 * 100ms)
 		time.Sleep(100 * time.Millisecond)
 		if isMounted, _ := m.IsMounted(overlay); isMounted {
 			mounted = true
 			break
 		}
+		// Check if process exited early (error)
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			break
+		}
 	}
 
 	if !mounted {
-		cmd.Process.Kill()
-		return api.NewError(api.ErrMountFailed, "mount verification failed after timeout", nil)
+		// Check if process is still running
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		errMsg := "mount verification failed after timeout"
+		if stderr.Len() > 0 {
+			errMsg = fmt.Sprintf("fuse-overlayfs failed: %s", strings.TrimSpace(stderr.String()))
+		}
+		return api.NewError(api.ErrMountFailed, errMsg, nil)
 	}
 
 	return nil
