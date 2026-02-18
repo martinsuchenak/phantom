@@ -7,28 +7,13 @@ before:
     - go mod tidy
 
 builds:
-  - id: phantom-linux
+  - id: phantom
     main: ./cmd
     binary: phantom
     env:
       - CGO_ENABLED=0
     goos:
       - linux
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
-      - -X main.version={{.Version}}
-      - -X main.commit={{.Commit}}
-      - -X main.date={{.Date}}
-
-  - id: phantom-darwin
-    main: ./cmd
-    binary: phantom
-    env:
-      - CGO_ENABLED=0
-    goos:
       - darwin
     goarch:
       - amd64
@@ -38,10 +23,6 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
-    hooks:
-      post:
-        - cmd: codesign --force --options runtime --sign "{{ .Env.APPLE_DEVELOPER_ID }}" --timestamp "{{ .Path }}"
-          output: true
 
 archives:
   - id: default
@@ -76,14 +57,17 @@ release:
   prerelease: auto
   name_template: "v{{.Version}}"
 
-homebrew_casks:
+brews:
   - name: phantom
-    ids:
-      - phantom-darwin
     repository:
       owner: martinsuchenak
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
     homepage: "https://github.com/martinsuchenak/phantom"
     description: "CLI tool for managing overlay filesystems for parallel AI agent development"
     license: "MIT"
+    install: |
+      bin.install "phantom"
+    test: |
+      system "#{bin}/phantom", "--version"
