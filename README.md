@@ -116,15 +116,14 @@ phantom stop feature-a --force
 ### Run an Agent in Overlay Context
 
 ```bash
-phantom run --agent "claude code" --task "implement auth" --base /path/to/repo
+phantom run /path/to/repo --agent "claude code" --task "implement auth"
 ```
 
 Options:
 - `--agent, -a` - Agent command to run (required)
-- `--task, -t` - Task description (required)
-- `--base, -b` - Base directory for overlay (required)
+- `--task, -t` - Task description (optional, passed to agent as env var)
 - `--name, -n` - Overlay name (auto-generated if not specified)
-- `--branch` - Git branch name
+- `--branch, -b` - Git branch name
 - `--timeout` - Timeout in minutes (default: from config, max: 1440)
 - `--cleanup` - Cleanup overlay after completion
 - `--push` - Push branch to remote on completion
@@ -146,7 +145,7 @@ Environment variables set for the agent:
 | `phantom stop <name>` | Unmount and optionally cleanup/push |
 | `phantom list` | List all active overlays |
 | `phantom status [<name>]` | Show overlay state |
-| `phantom run --agent <cmd> --task <desc> --base <dir>` | Run agent in overlay context |
+| `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 
 ### Global Flags
 

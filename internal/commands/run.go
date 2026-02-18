@@ -30,18 +30,10 @@ func NewRunCommand() *cli.Command {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "task",
-				Aliases:  []string{"t"},
-				Usage:    "Task description",
-				EnvVars:  []string{"OVERLAY_TASK"},
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "base",
-				Aliases:  []string{"b"},
-				Usage:    "Base directory for the overlay",
-				EnvVars:  []string{"OVERLAY_BASE"},
-				Required: true,
+				Name:    "task",
+				Aliases: []string{"t"},
+				Usage:   "Task description (passed to agent as OVERLAY_TASK)",
+				EnvVars: []string{"OVERLAY_TASK"},
 			},
 			&cli.StringFlag{
 				Name:    "name",
@@ -51,6 +43,7 @@ func NewRunCommand() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:    "branch",
+				Aliases: []string{"b"},
 				Usage:   "Git branch name",
 				EnvVars: []string{"OVERLAY_BRANCH"},
 			},
@@ -73,14 +66,21 @@ func NewRunCommand() *cli.Command {
 				Usage:   "Keep overlay mounted after completion",
 			},
 		},
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:     "base-dir",
+				Usage:    "Base directory to overlay",
+				Required: true,
+			},
+		},
 		Run: doRun,
 	}
 }
 
 func doRun(ctx context.Context, cmd *cli.Command) error {
+	baseDir := cmd.GetStringArg("base-dir")
 	agentCmd := cmd.GetString("agent")
 	task := cmd.GetString("task")
-	baseDir := cmd.GetString("base")
 	name := cmd.GetString("name")
 	branch := cmd.GetString("branch")
 	timeoutMinutes := cmd.GetInt("timeout")
