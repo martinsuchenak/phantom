@@ -51,6 +51,10 @@ func doStop(ctx context.Context, cmd *cli.Command) error {
 	doPush := cmd.GetBool("push")
 	force := cmd.GetBool("force")
 
+	return processStop(ctx, name, doCleanup, doPush, force)
+}
+
+func processStop(ctx context.Context, name string, doCleanup, doPush, force bool) error {
 	log.Debug("Stopping overlay %q (cleanup=%v, push=%v, force=%v)", name, doCleanup, doPush, force)
 
 	// Initialize state store

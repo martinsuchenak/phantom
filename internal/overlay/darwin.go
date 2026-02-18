@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -30,7 +29,7 @@ func NewManager(stateDir string, unionfsPath string, fuseOptions []string) (*Dar
 
 	// Ensure directories exist
 	for _, dir := range []string{overlaysDir, mountDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
@@ -98,7 +97,7 @@ func (m *DarwinManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 	mountPoint := filepath.Join(m.mountDir, opts.Name)
 
 	for _, dir := range []string{upperDir, mountPoint} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, api.NewError(api.ErrMountFailed, fmt.Sprintf("failed to create %s", dir), err)
 		}
 	}
@@ -127,12 +126,12 @@ func (m *DarwinManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 // Mount mounts an existing overlay
 func (m *DarwinManager) Mount(overlay *api.Overlay) error {
 	// Ensure mount point exists
-	if err := os.MkdirAll(overlay.MountPoint, 0755); err != nil {
+	if err := os.MkdirAll(overlay.MountPoint, 0700); err != nil {
 		return api.NewError(api.ErrMountFailed, "failed to create mount point", err)
 	}
 
 	// Ensure upper directory exists
-	if err := os.MkdirAll(overlay.UpperDir, 0755); err != nil {
+	if err := os.MkdirAll(overlay.UpperDir, 0700); err != nil {
 		return api.NewError(api.ErrMountFailed, "failed to create upper directory", err)
 	}
 
@@ -319,29 +318,6 @@ func (m *DarwinManager) Prune() error {
 	return nil
 }
 
-// CheckDependencies verifies that required system capabilities are available
-func CheckDependencies() error {
-	// Check for unionfs-fuse
-	unionfsPath := findUnionFS()
-	if unionfsPath == "" {
-		return fmt.Errorf("unionfs-fuse not found. Install with: brew install unionfs-fuse")
-	}
-
-	// Check for FUSE (macFUSE or FUSE-T)
-	// Try to load the kernel extension or check if fuse-t is installed
-	if _, err := exec.LookPath("fuse-t"); err == nil {
-		// FUSE-T is installed
-		return nil
-	}
-
-	// Check for macFUSE
-	if _, err := os.Stat("/Library/Filesystems/macfuse.fs"); err == nil {
-		return nil
-	}
-
-	return fmt.Errorf("no FUSE implementation found. Install macFUSE or FUSE-T")
-}
-
 // ForceUnmount forces unmount of a stuck overlay
 func (m *DarwinManager) ForceUnmount(overlay *api.Overlay) error {
 	// Use umount -f to force unmount
@@ -359,56 +335,4 @@ func (m *DarwinManager) ForceUnmount(overlay *api.Overlay) error {
 	}
 
 	return nil
-}
-
-// MountInfo returns information about a mount point
-type MountInfo struct {
-	Device     string
-	MountPoint string
-	FSType     string
-	Options    string
-}
-
-// GetMounts returns all currently mounted FUSE filesystems
-func GetMounts() ([]MountInfo, error) {
-	cmd := exec.Command("mount")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	var mounts []MountInfo
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		// Look for FUSE mounts (typically show as "macfuse" or "fuse-t")
-		if strings.Contains(line, "fuse") || strings.Contains(line, "unionfs") {
-			parts := strings.Fields(line)
-			if len(parts) >= 3 {
-				mounts = append(mounts, MountInfo{
-					Device:     parts[0],
-					MountPoint: parts[2],
-					FSType:     "fuse",
-				})
-			}
-		}
-	}
-
-	return mounts, nil
-}
-
-// parsePIDFromFile reads a PID from a file (helper for persistent overlays)
-func parsePIDFromFile(path string) (int, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(strings.TrimSpace(string(data)))
-}
-
-// writePIDToFile writes a PID to a file (helper for persistent overlays)
-func writePIDToFile(path string, pid int) error {
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0644)
 }

@@ -46,6 +46,10 @@ func doStatus(ctx context.Context, cmd *cli.Command) error {
 	}
 	format := cmd.GetString("format")
 
+	return processStatus(ctx, name, format)
+}
+
+func processStatus(ctx context.Context, name, format string) error {
 	log.Debug("Showing status for overlay %q (format=%s)", name, format)
 
 	// Initialize state store

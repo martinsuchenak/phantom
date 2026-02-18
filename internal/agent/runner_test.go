@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"context"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/martinsuchenak/phantom/internal/config"
 	"github.com/martinsuchenak/phantom/pkg/api"
@@ -111,17 +114,87 @@ func TestBuildEnv(t *testing.T) {
 }
 
 func TestRunShortCommand(t *testing.T) {
-	// This test requires a valid overlay mount point, so we'll skip it
-	// in CI environments or when the overlay can't be created
-	t.Skip("requires mounted overlay filesystem")
+	cfg := config.DefaultConfig()
+	log := &mockLogger{} // Use mock logger
+	runner := NewRunner(cfg, log)
+
+	// Create temp dir acting as overlay mount
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	overlay := &api.Overlay{
+		Name:       "test-overlay",
+		MountPoint: tmpDir,
+		BaseDir:    "/base/test",
+	}
+
+	opts := &api.RunOptions{
+		Agent: "echo 'hello world'",
+		Task:  "test task",
+	}
+
+	exitCode, err := runner.Run(context.Background(), overlay, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
 }
 
 func TestRunWithTimeout(t *testing.T) {
-	// This test requires a valid overlay mount point, so we'll skip it
-	t.Skip("requires mounted overlay filesystem")
+	cfg := config.DefaultConfig()
+	log := &mockLogger{} // Use mock logger
+	runner := NewRunner(cfg, log)
+
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	overlay := &api.Overlay{
+		MountPoint: tmpDir,
+	}
+
+	opts := &api.RunOptions{
+		Agent:   "sleep 2",
+		Task:    "timeout task",
+		Timeout: 500 * time.Millisecond,
+	}
+
+	// Should fail/timeout
+	_, err = runner.Run(context.Background(), overlay, opts)
+	if err == nil {
+		t.Error("expected error due to timeout")
+	}
 }
 
 func TestRunExitCodes(t *testing.T) {
-	// This test requires a valid overlay mount point, so we'll skip it
-	t.Skip("requires mounted overlay filesystem")
+	cfg := config.DefaultConfig()
+	log := &mockLogger{} // Use mock logger
+	runner := NewRunner(cfg, log)
+
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	overlay := &api.Overlay{
+		MountPoint: tmpDir,
+	}
+
+	opts := &api.RunOptions{
+		Agent: "exit 42",
+		Task:  "exit code task",
+	}
+
+	exitCode, err := runner.Run(context.Background(), overlay, opts)
+	if exitCode != 42 {
+		t.Errorf("expected exit code 42, got %d", exitCode)
+	}
 }

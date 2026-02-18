@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 
 	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/internal/state"
@@ -19,21 +20,21 @@ func NewStartCommand() *cli.Command {
 		Description: "Creates a new overlay filesystem for the specified base directory and prints the mount point path.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "name",
-				Aliases:  []string{"n"},
-				Usage:    "Name for the overlay",
-				EnvVars:  []string{"OVERLAY_NAME"},
+				Name:    "name",
+				Aliases: []string{"n"},
+				Usage:   "Name for the overlay",
+				EnvVars: []string{"OVERLAY_NAME"},
 			},
 			&cli.StringFlag{
-				Name:     "branch",
-				Aliases:  []string{"b"},
-				Usage:    "Git branch name (default: overlay/<name>)",
-				EnvVars:  []string{"OVERLAY_BRANCH"},
+				Name:    "branch",
+				Aliases: []string{"b"},
+				Usage:   "Git branch name (default: overlay/<name>)",
+				EnvVars: []string{"OVERLAY_BRANCH"},
 			},
 			&cli.BoolFlag{
-				Name:     "persistent",
-				Aliases:  []string{"p"},
-				Usage:    "Keep overlay data across reboots",
+				Name:    "persistent",
+				Aliases: []string{"p"},
+				Usage:   "Keep overlay data across reboots",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -56,6 +57,10 @@ func doStart(ctx context.Context, cmd *cli.Command) error {
 	branch := cmd.GetString("branch")
 	persistent := cmd.GetBool("persistent")
 
+	return processStart(ctx, baseDir, name, branch, persistent)
+}
+
+func processStart(ctx context.Context, baseDir, name, branch string, persistent bool) error {
 	// Get absolute path for base directory
 	absBaseDir, err := filepath.Abs(baseDir)
 	if err != nil {
@@ -69,6 +74,13 @@ func doStart(ctx context.Context, cmd *cli.Command) error {
 		if name == "." || name == "/" {
 			return fmt.Errorf("could not generate overlay name, please specify with -n")
 		}
+	}
+
+	// Validate name format to prevent path traversal and ensure safety
+	// Only allow alphanumeric characters, hyphens, and underscores
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	if !validName.MatchString(name) {
+		return fmt.Errorf("invalid overlay name %q: must contain only alphanumeric characters, hyphens, and underscores", name)
 	}
 
 	log.Debug("Creating overlay %q for %q", name, absBaseDir)

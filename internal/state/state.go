@@ -17,7 +17,7 @@ type Store struct {
 // NewStore creates a new state store
 func NewStore(stateDir string) (*Store, error) {
 	statePath := filepath.Join(stateDir, "state")
-	if err := os.MkdirAll(statePath, 0755); err != nil {
+	if err := os.MkdirAll(statePath, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create state directory: %w", err)
 	}
 	return &Store{stateDir: statePath}, nil

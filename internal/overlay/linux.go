@@ -21,13 +21,13 @@ type LinuxManager struct {
 }
 
 // NewManager creates a new Linux overlay manager
-func NewManager(stateDir string) (*LinuxManager, error) {
+func NewManager(stateDir string, unionfsPath string, fuseOptions []string) (*LinuxManager, error) {
 	overlaysDir := filepath.Join(stateDir, "overlays")
 	mountDir := filepath.Join(stateDir, "mnt")
 
 	// Ensure directories exist
 	for _, dir := range []string{overlaysDir, mountDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
@@ -50,6 +50,11 @@ func (m *LinuxManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 		return nil, api.NewError(api.ErrMountFailed, "base path is not a directory", nil)
 	}
 
+	// Check for commas in base directory path (security risk for overlayfs options)
+	if strings.Contains(opts.BaseDir, ",") {
+		return nil, api.NewError(api.ErrMountFailed, "base directory path cannot contain commas", nil)
+	}
+
 	// Create overlay directories
 	overlayDir := filepath.Join(m.overlaysDir, opts.Name)
 	upperDir := filepath.Join(overlayDir, "upper")
@@ -57,7 +62,7 @@ func (m *LinuxManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 	mountPoint := filepath.Join(m.mountDir, opts.Name)
 
 	for _, dir := range []string{upperDir, workDir, mountPoint} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, api.NewError(api.ErrMountFailed, fmt.Sprintf("failed to create %s", dir), err)
 		}
 	}
@@ -87,16 +92,21 @@ func (m *LinuxManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 // Mount mounts an existing overlay
 func (m *LinuxManager) Mount(overlay *api.Overlay) error {
 	// Ensure mount point exists
-	if err := os.MkdirAll(overlay.MountPoint, 0755); err != nil {
+	if err := os.MkdirAll(overlay.MountPoint, 0700); err != nil {
 		return api.NewError(api.ErrMountFailed, "failed to create mount point", err)
 	}
 
 	// Ensure upper and work directories exist
-	if err := os.MkdirAll(overlay.UpperDir, 0755); err != nil {
+	if err := os.MkdirAll(overlay.UpperDir, 0700); err != nil {
 		return api.NewError(api.ErrMountFailed, "failed to create upper directory", err)
 	}
-	if err := os.MkdirAll(overlay.WorkDir, 0755); err != nil {
+	if err := os.MkdirAll(overlay.WorkDir, 0700); err != nil {
 		return api.NewError(api.ErrMountFailed, "failed to create work directory", err)
+	}
+
+	// Check paths for commas to prevent option injection
+	if strings.Contains(overlay.BaseDir, ",") || strings.Contains(overlay.UpperDir, ",") || strings.Contains(overlay.WorkDir, ",") {
+		return api.NewError(api.ErrMountFailed, "overlay paths cannot contain commas", nil)
 	}
 
 	// Mount options for overlayfs
@@ -237,23 +247,6 @@ func (m *LinuxManager) Prune() error {
 	return nil
 }
 
-// CheckDependencies verifies that required system capabilities are available
-func CheckDependencies() error {
-	// Check kernel support for overlayfs
-	data, err := os.ReadFile("/proc/filesystems")
-	if err != nil {
-		return fmt.Errorf("cannot read /proc/filesystems: %w", err)
-	}
-
-	// Check for overlay filesystem support
-	filesystems := string(data)
-	if !strings.Contains(filesystems, "overlay") {
-		return fmt.Errorf("overlay filesystem not supported by kernel")
-	}
-
-	return nil
-}
-
 // ForceUnmount uses lazy unmount to force unmount a stuck overlay
 func (m *LinuxManager) ForceUnmount(overlay *api.Overlay) error {
 	err := unix.Unmount(overlay.MountPoint, unix.MNT_DETACH)
@@ -261,42 +254,4 @@ func (m *LinuxManager) ForceUnmount(overlay *api.Overlay) error {
 		return api.NewError(api.ErrUnmountFailed, "failed to force unmount overlay", err)
 	}
 	return nil
-}
-
-// MountInfo returns information about a mount point
-type MountInfo struct {
-	Device     string
-	MountPoint string
-	FSType     string
-	Options    string
-}
-
-// GetMounts returns all currently mounted overlays
-func GetMounts() ([]MountInfo, error) {
-	data, err := os.ReadFile("/proc/mounts")
-	if err != nil {
-		return nil, err
-	}
-
-	var mounts []MountInfo
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 4 {
-			continue
-		}
-		if parts[2] == "overlay" {
-			mounts = append(mounts, MountInfo{
-				Device:     parts[0],
-				MountPoint: parts[1],
-				FSType:     parts[2],
-				Options:    parts[3],
-			})
-		}
-	}
-
-	return mounts, nil
 }

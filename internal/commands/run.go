@@ -87,17 +87,32 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 	doPush := cmd.GetBool("push")
 	persist := cmd.GetBool("persist")
 
+	exitCode, err := processRun(ctx, agentCmd, task, baseDir, name, branch, timeoutMinutes, doCleanup, doPush, persist)
+	if err != nil {
+		return err
+	}
+
+	// Exit with the same code as the agent
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
+
+	return nil
+}
+
+func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch string, timeoutMinutes int, doCleanup, doPush, persist bool) (int, error) {
 	timeout := time.Duration(timeoutMinutes) * time.Minute
 
 	// Override timeout from config if available and not explicitly set
-	if cfg != nil && cfg.Agent.DefaultTimeoutMinutes > 0 && !cmd.HasFlag("timeout") {
+	// Note: We can't check 'if flag set' easily here without passing map, but we can assume default 60
+	if cfg != nil && cfg.Agent.DefaultTimeoutMinutes > 0 && timeoutMinutes == 60 { // Assuming 60 is default
 		timeout = time.Duration(cfg.Agent.DefaultTimeoutMinutes) * time.Minute
 	}
 
 	// Get absolute path for base directory
 	absBaseDir, err := filepath.Abs(baseDir)
 	if err != nil {
-		return fmt.Errorf("failed to resolve base directory path: %w", err)
+		return 0, fmt.Errorf("failed to resolve base directory path: %w", err)
 	}
 
 	// Generate name if not provided
@@ -112,13 +127,13 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 	// Initialize state store
 	store, err := state.NewStore(cfg.GetStatePath())
 	if err != nil {
-		return fmt.Errorf("failed to initialize state store: %w", err)
+		return 0, fmt.Errorf("failed to initialize state store: %w", err)
 	}
 
 	// Create overlay manager
 	mgr, err := createOverlayManager()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// Check if overlay already exists
@@ -126,7 +141,7 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 	if store.Exists(name) {
 		ovl, err = store.Load(name)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		log.Debug("Using existing overlay")
 	} else {
@@ -152,7 +167,7 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 		// Create the overlay
 		ovl, err = mgr.Create(opts)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		// Handle git branch creation if applicable
@@ -172,17 +187,17 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 		// Save state
 		if err := store.Save(ovl); err != nil {
 			mgr.Cleanup(ovl)
-			return fmt.Errorf("failed to save overlay state: %w", err)
+			return 0, fmt.Errorf("failed to save overlay state: %w", err)
 		}
 	}
 
 	// Check if mounted
 	mounted, err := mgr.IsMounted(ovl)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if !mounted {
-		return api.NewError(api.ErrOverlayNotMounted, "overlay is not mounted", nil)
+		return 0, api.NewError(api.ErrOverlayNotMounted, "overlay is not mounted", nil)
 	}
 
 	// Create agent runner
@@ -214,10 +229,5 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 		store.Delete(name)
 	}
 
-	// Exit with the same code as the agent
-	if exitCode != 0 {
-		os.Exit(exitCode)
-	}
-
-	return err
+	return exitCode, err
 }
