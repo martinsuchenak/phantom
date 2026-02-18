@@ -139,6 +139,7 @@ func (m *LinuxManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 		Branch:     opts.Branch,
 		Persistent: opts.Persistent,
 		CreatedAt:  time.Now(),
+		UseFuse:    m.useFuse,
 	}
 
 	// Mount the overlay
@@ -225,7 +226,7 @@ func (m *LinuxManager) mountFuse(overlay *api.Overlay) error {
 	mounted := false
 	for i := 0; i < 20; i++ { // 2 second timeout (20 * 100ms)
 		time.Sleep(100 * time.Millisecond)
-		if m, _ := m.IsMounted(overlay); m {
+		if isMounted, _ := m.IsMounted(overlay); isMounted {
 			mounted = true
 			break
 		}
@@ -250,7 +251,9 @@ func (m *LinuxManager) Unmount(overlay *api.Overlay) error {
 		return nil // Already unmounted
 	}
 
-	if m.useFuse {
+	// Use the overlay's UseFuse flag if set
+	useFuse := overlay.UseFuse || m.useFuse
+	if useFuse {
 		return m.unmountFuse(overlay)
 	}
 	return m.unmountNative(overlay)
@@ -320,7 +323,10 @@ func (m *LinuxManager) isFuseOverlayProcess(pid int) bool {
 
 // IsMounted checks if an overlay is currently mounted
 func (m *LinuxManager) IsMounted(overlay *api.Overlay) (bool, error) {
-	if m.useFuse {
+	// Use the overlay's UseFuse flag if set (for loaded overlays),
+	// otherwise fall back to manager's setting (for new overlays)
+	useFuse := overlay.UseFuse || m.useFuse
+	if useFuse {
 		return m.isMountedFuse(overlay)
 	}
 	return m.isMountedNative(overlay)
@@ -349,12 +355,21 @@ func (m *LinuxManager) isMountedFuse(overlay *api.Overlay) (bool, error) {
 	}
 	defer f.Close()
 
+	// Clean the mount point path for comparison
+	cleanMountPoint := filepath.Clean(overlay.MountPoint)
+
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[1] == overlay.MountPoint {
-			return true, nil
+		if len(fields) >= 3 {
+			mountPoint := fields[1]
+			fsType := fields[2]
+			// Check both the mount point and that it's a fuse overlay
+			if filepath.Clean(mountPoint) == cleanMountPoint &&
+				(fsType == "fuse.fuse-overlayfs" || fsType == "fuse" || strings.HasPrefix(fsType, "fuse.")) {
+				return true, nil
+			}
 		}
 	}
 
@@ -449,7 +464,9 @@ func (m *LinuxManager) Prune() error {
 
 // ForceUnmount forces unmount of a stuck overlay
 func (m *LinuxManager) ForceUnmount(overlay *api.Overlay) error {
-	if m.useFuse {
+	// Use the overlay's UseFuse flag if set
+	useFuse := overlay.UseFuse || m.useFuse
+	if useFuse {
 		// Try fusermount -uz (lazy unmount)
 		cmd := execCommand("fusermount", "-uz", overlay.MountPoint)
 		if err := cmd.Run(); err != nil {

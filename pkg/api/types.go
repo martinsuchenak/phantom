@@ -14,7 +14,8 @@ type Overlay struct {
 	Branch     string    `json:"branch" yaml:"branch"`
 	Persistent bool      `json:"persistent" yaml:"persistent"`
 	CreatedAt  time.Time `json:"created_at" yaml:"created_at"`
-	PID        int       `json:"pid,omitempty" yaml:"pid,omitempty"` // macOS unionfs process
+	PID        int       `json:"pid,omitempty" yaml:"pid,omitempty"` // macOS unionfs / Linux fuse-overlayfs process
+	UseFuse    bool      `json:"use_fuse,omitempty" yaml:"use_fuse,omitempty"` // Linux: whether fuse-overlayfs was used
 }
 
 // OverlayStatus represents the current status of an overlay
