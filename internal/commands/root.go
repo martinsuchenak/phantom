@@ -7,6 +7,7 @@ import (
 
 	"github.com/martinsuchenak/phantom/internal/config"
 	"github.com/paularlott/cli"
+	"github.com/paularlott/cli/env"
 	"github.com/paularlott/logger"
 )
 
@@ -19,6 +20,9 @@ var (
 
 // Execute runs the CLI application
 func Execute() {
+	// Load .env file if present
+	_ = env.Load() // Ignore error if .env doesn't exist
+
 	app := &cli.Command{
 		Name:        "phantom",
 		Version:     "0.1.0",

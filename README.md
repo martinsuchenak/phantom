@@ -137,6 +137,37 @@ Environment variables set for the agent:
 - `OVERLAY_TASK` - Task description
 - `OVERLAY_ENABLED` - Always "true"
 
+### Using .env Files
+
+Phantom automatically loads `.env` files from the current directory. This allows you to set default values for flags:
+
+```bash
+# .env file
+OVERLAY_AGENT=claude
+OVERLAY_NAME=my-feature
+OVERLAY_TASK=implement authentication
+OVERLAY_BRANCH=feature/auth
+```
+
+Then run without specifying flags:
+
+```bash
+phantom run ./src/
+```
+
+Supported environment variables:
+- `OVERLAY_CONFIG` - Config file path
+- `OVERLAY_NAME` - Overlay name
+- `OVERLAY_AGENT` - Agent command
+- `OVERLAY_TASK` - Task description
+- `OVERLAY_BASE` - Base directory
+- `OVERLAY_BRANCH` - Git branch name
+
+The `.env` file supports:
+- Comments (`# comment`)
+- Variable expansion (`${VAR}` or `$VAR`)
+- Quoted values (single and double quotes)
+
 ## Commands
 
 | Command | Description |
