@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go version:*)",
+      "WebSearch",
+      "Bash(go mod download:*)",
+      "Bash(./overlay:*)",
+      "Bash(go vet:*)",
+      "Bash(make build-all:*)",
+      "Bash(make help:*)",
+      "Bash(make dist:*)",
+      "Bash(find:*)",
+      "Bash(./phantom:*)"
+    ]
+  }
+}
