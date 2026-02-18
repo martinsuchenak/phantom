@@ -16,16 +16,31 @@ var (
 	cfgPath    string
 	verbose    bool
 	log        logger.Logger
+	version    = "0.1.0"
+	commit     = ""
+	date       = ""
 )
+
+// SetVersion sets version info from main
+func SetVersion(v, c, d string) {
+	version = v
+	commit = c
+	date = d
+}
 
 // Execute runs the CLI application
 func Execute() {
 	// Load .env file if present
 	_ = env.Load() // Ignore error if .env doesn't exist
 
+	versionStr := version
+	if commit != "" && commit != "none" {
+		versionStr = fmt.Sprintf("%s (%s)", version, commit[:7])
+	}
+
 	app := &cli.Command{
 		Name:        "phantom",
-		Version:     "0.1.0",
+		Version:     versionStr,
 		Usage:       "Manage overlay filesystems for parallel AI agent development",
 		Description: "A CLI tool for managing overlay filesystems to enable multiple AI agents to work on the same codebase in parallel without conflicts.",
 		Flags: []cli.Flag{

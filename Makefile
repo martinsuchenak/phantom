@@ -117,9 +117,27 @@ run: build ## Build and run with arguments (usage: make run ARGS="start /path")
 	$(DIST_DIR)/$(BINARY_NAME) $(ARGS)
 
 # Release targets
-release: dist ## Create a release (build-all + checksums)
-	@echo "Release $(VERSION) ready in $(DIST_DIR)/"
-	@ls -lh $(DIST_DIR)/
+release: ## Create a release using goreleaser
+	@which goreleaser > /dev/null || (echo "goreleaser not found, please install it: https://goreleaser.com/install/" && exit 1)
+	goreleaser release --clean
+
+release-snapshot: ## Create a snapshot release (no publish)
+	@which goreleaser > /dev/null || (echo "goreleaser not found, please install it: https://goreleaser.com/install/" && exit 1)
+	goreleaser release --snapshot --clean
+
+release-check: ## Validate goreleaser config
+	@which goreleaser > /dev/null || (echo "goreleaser not found, please install it: https://goreleaser.com/install/" && exit 1)
+	goreleaser check
+
+push-tag: ## Create and push a git tag (usage: make push-tag TAG=v1.0.0)
+ifndef TAG
+	$(error TAG is required. Usage: make push-tag TAG=v1.0.0)
+endif
+	@echo "Creating tag $(TAG)..."
+	git tag -a $(TAG) -m "Release $(TAG)"
+	@echo "Pushing tag $(TAG)..."
+	git push origin $(TAG)
+	@echo "Tag $(TAG) pushed. GitHub Actions will create the release."
 
 # Quick aliases
 linux: build-linux
