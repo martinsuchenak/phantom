@@ -9,5 +9,10 @@ import (
 
 // newOverlayManager creates a Darwin (macOS) overlay manager
 func newOverlayManager(cfg *config.Config) (overlayManager, error) {
-	return overlay.NewManager(cfg.GetStatePath(), cfg.Darwin.UnionFSPath, cfg.Darwin.FUSEOptions)
+	return overlay.NewManager(
+		cfg.GetStatePath(),
+		cfg.Darwin.UnionFSPath,
+		cfg.Darwin.FUSEOptions,
+		false, // Darwin always uses FUSE (unionfs-fuse)
+	)
 }

@@ -15,6 +15,7 @@ type Config struct {
 	Overlay  Overlay  `yaml:"overlay"`
 	Git      Git      `yaml:"git"`
 	Darwin   Darwin   `yaml:"darwin"`
+	Linux    Linux    `yaml:"linux"`
 	Agent    Agent    `yaml:"agent"`
 	AgentEnv []string `yaml:"agent_env"`
 }
@@ -42,6 +43,13 @@ type Git struct {
 type Darwin struct {
 	UnionFSPath string   `yaml:"unionfs_path"`
 	FUSEOptions []string `yaml:"fuse_options"`
+}
+
+// Linux specific configuration
+type Linux struct {
+	UseFuse         bool     `yaml:"use_fuse"`          // Use fuse-overlayfs instead of native
+	FuseOverlayPath string   `yaml:"fuse_overlay_path"` // Path to fuse-overlayfs binary
+	FUSEOptions     []string `yaml:"fuse_options"`
 }
 
 // Agent configuration
@@ -87,6 +95,11 @@ func DefaultConfig() *Config {
 		Darwin: Darwin{
 			UnionFSPath: "", // auto-detect
 			FUSEOptions: []string{"cow"},
+		},
+		Linux: Linux{
+			UseFuse:         false, // use native overlayfs by default
+			FuseOverlayPath: "",    // auto-detect
+			FUSEOptions:     []string{},
 		},
 		Agent: Agent{
 			DefaultTimeoutMinutes: 60,

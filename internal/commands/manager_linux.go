@@ -9,5 +9,10 @@ import (
 
 // newOverlayManager creates a Linux overlay manager
 func newOverlayManager(cfg *config.Config) (overlayManager, error) {
-	return overlay.NewManager(cfg.GetStatePath(), "", nil)
+	return overlay.NewManager(
+		cfg.GetStatePath(),
+		cfg.Linux.FuseOverlayPath,
+		cfg.Linux.FUSEOptions,
+		cfg.Linux.UseFuse,
+	)
 }

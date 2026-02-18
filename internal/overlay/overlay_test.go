@@ -14,7 +14,7 @@ func TestNewManager(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Test Darwin Manager creation
-	dm, err := NewManager(tmpDir, "/usr/bin/unionfs", []string{"cow"})
+	dm, err := NewManager(tmpDir, "/usr/bin/unionfs", []string{"cow"}, false)
 	if err != nil {
 		// Might fail if unionfs not found, which is expected in CI
 		// But basic struct initialization should work if we pass paths

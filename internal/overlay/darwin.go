@@ -28,7 +28,7 @@ type DarwinManager struct {
 }
 
 // NewManager creates a new Darwin overlay manager
-func NewManager(stateDir string, unionfsPath string, fuseOptions []string) (*DarwinManager, error) {
+func NewManager(stateDir string, unionfsPath string, fuseOptions []string, _ bool) (*DarwinManager, error) {
 	overlaysDir := filepath.Join(stateDir, "overlays")
 	mountDir := filepath.Join(stateDir, "mnt")
 

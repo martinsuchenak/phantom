@@ -29,7 +29,7 @@ func TestDarwinManager_Flow(t *testing.T) {
 	os.Setenv("GO_TEST_MOUNTED_PATHS", expectedMountPoint)
 	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
-	manager, err := NewManager(stateDir, "/usr/local/bin/unionfs-fuse", []string{"cow"})
+	manager, err := NewManager(stateDir, "/usr/local/bin/unionfs-fuse", []string{"cow"}, false)
 	if err != nil {
 		t.Fatalf("failed to create manager: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDarwinManager_Lifecycle(t *testing.T) {
 	os.Setenv("GO_TEST_MOUNTED_PATHS", expectedMountPoint)
 	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
-	manager, err := NewManager(stateDir, "unionfs-fuse", nil)
+	manager, err := NewManager(stateDir, "unionfs-fuse", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

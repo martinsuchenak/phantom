@@ -44,8 +44,9 @@ This installs the binary to `/usr/local/bin/phantom`.
 ### Prerequisites
 
 **Linux:**
-- Kernel with overlayfs support (most modern kernels)
-- Root privileges or appropriate capabilities for mounting
+- Native overlayfs: requires root or appropriate capabilities
+- Rootless: install fuse-overlayfs (`apt install fuse-overlayfs` or `dnf install fuse-overlayfs`)
+- Auto-detection: if not root and fuse-overlayfs is available, it's used automatically
 
 **macOS:**
 - [macFUSE](https://osxfuse.github.io/) or [FUSE-T](https://github.com/macos-fuse-t/fuse-t)
@@ -172,6 +173,10 @@ darwin:
   unionfs_path: ""               # auto-detect
   fuse_options:
     - "cow"
+linux:
+  use_fuse: false                # auto-detects if not root; set true to force
+  fuse_overlay_path: ""          # auto-detect fuse-overlayfs
+  fuse_options: []
 agent:
   default_timeout_minutes: 60    # max: 1440 (24 hours)
   cleanup_on_success: true
@@ -190,15 +195,25 @@ The configuration is validated on load:
 
 ## How It Works
 
-### Linux
+### Linux (Native)
 
-Uses native kernel overlayfs via syscall:
+Uses native kernel overlayfs via syscall (requires root):
 
 ```
 mount -t overlay overlay \
   -o lowerdir=/base,upperdir=/upper,workdir=/work \
   /mnt/point
 ```
+
+### Linux (FUSE - Rootless)
+
+Uses fuse-overlayfs for unprivileged operation (auto-detected when not root):
+
+```
+fuse-overlayfs -o lowerdir=/base,upperdir=/upper,workdir=/work /mnt/point
+```
+
+Force with `linux.use_fuse: true` in config.
 
 ### macOS
 
