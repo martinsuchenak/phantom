@@ -255,6 +255,33 @@ Options:
 
 Agent logs are stored in `~/.phantom/logs/<name>.log` and include stdout/stderr from `phantom run` executions. Each run appends to the log with a timestamped header.
 
+### Restart an Overlay
+
+```bash
+# Remount an overlay that was unmounted (e.g. after reboot)
+phantom restart feature-a
+```
+
+If the overlay is already mounted, this is a no-op. The overlay state must still exist in `~/.phantom/state/`.
+
+### Shell Completion
+
+```bash
+# Bash
+source <(phantom completion bash)
+
+# Zsh
+source <(phantom completion zsh)
+
+# Fish
+phantom completion fish | source
+
+# PowerShell
+phantom completion powershell | Out-String | Invoke-Expression
+```
+
+Supports dynamic completion for commands, subcommands, and flags.
+
 ### Using .env Files
 
 Phantom automatically loads `.env` files from the current directory. This allows you to set default values for flags:
@@ -298,8 +325,10 @@ The `.env` file supports:
 | `phantom commit <name> -m "msg"` | Commit changes in an overlay |
 | `phantom apply <name>` | Apply overlay changes to base directory |
 | `phantom logs <name>` | Show agent execution logs |
+| `phantom restart <name>` | Remount an unmounted overlay |
 | `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
+| `phantom completion <shell>` | Generate shell completion scripts |
 
 ### Global Flags
 

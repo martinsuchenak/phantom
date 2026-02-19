@@ -71,6 +71,8 @@ func Execute() {
 			NewCommitCommand(),
 			NewApplyCommand(),
 			NewLogsCommand(),
+			NewRestartCommand(),
+			cli.GenerateCompletionCommand(),
 		},
 		PreRun: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			var err error
