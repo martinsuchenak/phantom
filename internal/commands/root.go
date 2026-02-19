@@ -66,6 +66,10 @@ func Execute() {
 			NewListCommand(),
 			NewStatusCommand(),
 			NewRunCommand(),
+			NewDiffCommand(),
+			NewPruneCommand(),
+			NewCommitCommand(),
+			NewApplyCommand(),
 		},
 		PreRun: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			var err error

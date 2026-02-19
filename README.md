@@ -195,6 +195,45 @@ Options:
 
 Persistent overlays are always skipped. The expiry threshold is controlled by `overlay.auto_cleanup_days` in the config (default: 7 days).
 
+### Commit Changes in an Overlay
+
+```bash
+# Commit all changes
+phantom commit feature-a -m "implement auth module"
+
+# Commit and push to remote
+phantom commit feature-a -m "implement auth module" --push
+```
+
+Options:
+- `--message, -m` - Commit message (required)
+- `--push` - Push to remote after committing
+
+The overlay must be mounted and be a git repository. All changes are staged automatically (`git add -A`).
+
+### Apply Overlay Changes to Base Directory
+
+```bash
+# Merge overlay branch into base repo (git)
+phantom apply feature-a
+
+# Preview what would be applied
+phantom apply feature-a --dry-run
+
+# Apply and stop the overlay
+phantom apply feature-a --stop
+
+# Apply, stop, and cleanup
+phantom apply feature-a --cleanup
+```
+
+Options:
+- `--dry-run` - Show what would be applied without making changes
+- `--stop` - Stop the overlay after applying
+- `--cleanup` - Cleanup overlay data after applying (implies --stop)
+
+For git repos, this auto-commits any uncommitted changes in the overlay, then merges the overlay branch into the base repo's current branch. For non-git directories, it copies changed files from the upper directory and handles deletions.
+
 ### Using .env Files
 
 Phantom automatically loads `.env` files from the current directory. This allows you to set default values for flags:
@@ -235,6 +274,8 @@ The `.env` file supports:
 | `phantom list` | List all active overlays |
 | `phantom status [<name>]` | Show overlay state |
 | `phantom diff <name>` | Show files changed in an overlay |
+| `phantom commit <name> -m "msg"` | Commit changes in an overlay |
+| `phantom apply <name>` | Apply overlay changes to base directory |
 | `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 

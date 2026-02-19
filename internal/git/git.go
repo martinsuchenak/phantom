@@ -186,3 +186,11 @@ func (g *Operations) GetStatus(ctx context.Context, repoPath string) (string, er
 func (g *Operations) GetLog(ctx context.Context, repoPath string, count int) (string, error) {
 	return g.runGit(ctx, repoPath, "log", "--oneline", fmt.Sprintf("-%d", count))
 }
+// MergeBranch merges the specified branch into the current branch
+func (g *Operations) MergeBranch(ctx context.Context, repoPath, branchName string) error {
+	_, err := g.runGit(ctx, repoPath, "merge", branchName)
+	if err != nil {
+		return api.NewError(api.ErrGitFailed, fmt.Sprintf("failed to merge branch %s", branchName), err)
+	}
+	return nil
+}
