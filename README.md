@@ -68,7 +68,7 @@ This installs the binary to `/usr/local/bin/phantom`.
 
 **macOS:**
 - [macFUSE](https://osxfuse.github.io/) or [FUSE-T](https://github.com/macos-fuse-t/fuse-t)
-- unionfs-fuse: `brew install unionfs-fuse`
+- [unionfs-fuse](https://github.com/rpodgorny/unionfs-fuse)
 
 ## Usage
 
