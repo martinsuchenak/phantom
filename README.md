@@ -374,6 +374,55 @@ phantom snapshot delete feature-a-20260220-143000
 
 Snapshots copy the overlay's upper directory (all changes) to `~/.phantom/snapshots/<name>/`. Useful for saving a known-good state before risky experiments. The overlay must be unmounted before restoring.
 
+### Export Overlay Changes
+
+```bash
+# Export as unified diff to stdout
+phantom export feature-a
+
+# Export diff to a file
+phantom export feature-a -o changes.patch
+
+# Export changed files as a tarball
+phantom export feature-a --format tar -o changes.tar.gz
+```
+
+Options:
+- `--output, -o` - Output file path (required for tar, optional for diff)
+- `--format` - Export format: `diff` (default), `tar`
+
+The diff format produces a unified diff comparing overlay changes against the base. The tar format packages all changed files (excluding deletions) into an archive. Supports `.gz`/`.tgz` compression.
+
+### Clone an Overlay
+
+```bash
+# Clone an overlay with all its changes
+phantom clone feature-a feature-a-experiment
+
+# Clone with a specific branch
+phantom clone feature-a feature-a-v2 --branch feature/v2
+```
+
+Options:
+- `--branch, -b` - Git branch for the clone (default: `phantom/<new-name>`)
+
+Creates a new overlay from the same base directory and copies all file changes from the source. Each clone gets its own mount point and git branch. Useful for branching experiments from a known-good state.
+
+### Agent Templates
+
+```bash
+# List available templates
+phantom template list
+
+# Show details for a template
+phantom template show claude
+
+# Generate agents.yaml from templates
+phantom template generate --agents claude,aider,gemini -o agents.yaml
+```
+
+Built-in templates: `claude`, `claude-interactive`, `gemini`, `gemini-arg`, `aider`, `vibe`, `copilot`, `codex`. Each template defines the correct agent command and task delivery mode (stdin, placeholder, or argument).
+
 ### Shell Completion
 
 ```bash
@@ -441,6 +490,10 @@ The `.env` file supports:
 | `phantom run-all <base-dir>` | Run multiple agents in parallel |
 | `phantom init` | Initialize default configuration |
 | `phantom health` | Check health of overlays and system |
+| `phantom export <name>` | Export overlay changes as diff or tarball |
+| `phantom clone <src> <dst>` | Clone an overlay to a new name |
+| `phantom template list` | List available agent templates |
+| `phantom template generate` | Generate agents.yaml from templates |
 | `phantom snapshot save <name>` | Save a snapshot of an overlay |
 | `phantom snapshot restore <name> <snap>` | Restore overlay from snapshot |
 | `phantom snapshot list [<name>]` | List snapshots |
