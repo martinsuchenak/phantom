@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -48,16 +50,35 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	// This avoids shell injection by not using sh -c
 	cmd := r.buildCommand(ctx, opts.Agent)
 	cmd.Dir = ovl.MountPoint
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+
+	// Set up log file for agent output
+	logFile, err := r.openLogFile(ovl.Name)
+	if err != nil {
+		r.log.Debug("Failed to create log file: %v", err)
+		// Fall back to stdout/stderr only
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	} else {
+		defer logFile.Close()
+		// Write header to log
+		fmt.Fprintf(logFile, "=== Phantom Agent Log ===\n")
+		fmt.Fprintf(logFile, "Overlay:  %s\n", ovl.Name)
+		fmt.Fprintf(logFile, "Agent:    %s\n", opts.Agent)
+		fmt.Fprintf(logFile, "Task:     %s\n", opts.Task)
+		fmt.Fprintf(logFile, "Started:  %s\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(logFile, "=========================\n\n")
+		// Tee output to both terminal and log file
+		cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
+		cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
+	}
 
 	// Set environment variables
 	cmd.Env = r.buildEnv(ovl, opts)
 
 	// Run the command
 	startTime := time.Now()
-	err := cmd.Run()
+	err = cmd.Run()
 	duration := time.Since(startTime)
 
 	// Get exit code
@@ -72,6 +93,14 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 
 	// Log completion
 	r.log.Info("Agent completed in %s with exit code %d", duration.Round(time.Second), exitCode)
+
+	// Write footer to log file
+	if logFile != nil {
+		fmt.Fprintf(logFile, "\n=========================\n")
+		fmt.Fprintf(logFile, "Finished: %s\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(logFile, "Duration: %s\n", duration.Round(time.Second))
+		fmt.Fprintf(logFile, "Exit:     %d\n", exitCode)
+	}
 
 	// Handle git operations on completion
 	if ovl.Branch != "" && opts.PushOnEnd {
@@ -185,4 +214,14 @@ func (r *Runner) handleGitOperations(ctx context.Context, ovl *api.Overlay, succ
 			r.log.Debug("Pushed branch to remote")
 		}
 	}
+}
+// openLogFile creates or appends to the log file for an overlay's agent run
+func (r *Runner) openLogFile(name string) (*os.File, error) {
+	logsDir := r.cfg.GetLogsPath()
+	if err := os.MkdirAll(logsDir, 0700); err != nil {
+		return nil, err
+	}
+
+	logPath := filepath.Join(logsDir, name+".log")
+	return os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 }

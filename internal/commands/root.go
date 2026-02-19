@@ -70,6 +70,7 @@ func Execute() {
 			NewPruneCommand(),
 			NewCommitCommand(),
 			NewApplyCommand(),
+			NewLogsCommand(),
 		},
 		PreRun: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			var err error

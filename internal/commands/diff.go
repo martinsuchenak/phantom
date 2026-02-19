@@ -216,3 +216,44 @@ func printDiffStat(result diffResult) error {
 		total, result.Added, result.Modified, result.Deleted)
 	return nil
 }
+// countFileChanges returns quick file change counts for an overlay's upper directory.
+// Used by status command to show a summary without full diff output.
+func countFileChanges(upperDir, baseDir string) (added, modified, deleted int) {
+	if upperDir == "" {
+		return
+	}
+
+	filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		relPath, _ := filepath.Rel(upperDir, path)
+		if relPath == "." {
+			return nil
+		}
+
+		if strings.HasPrefix(relPath, "work/") || relPath == "work" {
+			return nil
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		baseName := filepath.Base(path)
+		if strings.HasPrefix(baseName, ".wh.") {
+			deleted++
+			return nil
+		}
+
+		basePath := filepath.Join(baseDir, relPath)
+		if _, err := os.Stat(basePath); err == nil {
+			modified++
+		} else {
+			added++
+		}
+		return nil
+	})
+	return
+}

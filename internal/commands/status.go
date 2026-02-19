@@ -174,6 +174,17 @@ func printStatusTable(ctx context.Context, ovl *api.Overlay, status *api.Overlay
 		}
 	}
 
+	// Show file change stats
+	if ovl.UpperDir != "" {
+		added, modified, deleted := countFileChanges(ovl.UpperDir, ovl.BaseDir)
+		total := added + modified + deleted
+		if total > 0 {
+			fmt.Printf("Changes:     %d file(s) (%d added, %d modified, %d deleted)\n", total, added, modified, deleted)
+		} else {
+			fmt.Printf("Changes:     none\n")
+		}
+	}
+
 	return nil
 }
 
@@ -188,9 +199,14 @@ type statusJSONOutput struct {
 	Persistent bool   `json:"persistent"`
 	Uptime     string `json:"uptime"`
 	SizeBytes  int64  `json:"size_bytes"`
+	Added      int    `json:"files_added"`
+	Modified   int    `json:"files_modified"`
+	Deleted    int    `json:"files_deleted"`
 }
 
 func printStatusJSON(ovl *api.Overlay, status *api.OverlayStatus) error {
+	added, modified, deleted := countFileChanges(ovl.UpperDir, ovl.BaseDir)
+
 	output := statusJSONOutput{
 		Name:       ovl.Name,
 		Mounted:    status.Mounted,
@@ -201,6 +217,9 @@ func printStatusJSON(ovl *api.Overlay, status *api.OverlayStatus) error {
 		Persistent: ovl.Persistent,
 		Uptime:     formatDuration(status.Uptime),
 		SizeBytes:  status.SizeBytes,
+		Added:      added,
+		Modified:   modified,
+		Deleted:    deleted,
 	}
 
 	data, err := json.MarshalIndent(output, "", "  ")

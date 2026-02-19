@@ -212,6 +212,10 @@ func (c *Config) GetOverlaysPath() string {
 func (c *Config) GetMountPath() string {
 	return filepath.Join(c.StateDir, "mnt")
 }
+// GetLogsPath returns the path where agent logs are stored
+func (c *Config) GetLogsPath() string {
+	return filepath.Join(c.StateDir, "logs")
+}
 
 func expandHome(path string) string {
 	if len(path) > 0 && path[0] == '~' {

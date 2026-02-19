@@ -106,7 +106,7 @@ phantom list --format json
 ### Show Status
 
 ```bash
-# Status of specific overlay
+# Status of specific overlay (includes file change stats)
 phantom status feature-a
 
 # Status of all overlays
@@ -115,6 +115,8 @@ phantom status
 # Output as JSON
 phantom status feature-a --format json
 ```
+
+The single-overlay status includes file change counts (added/modified/deleted) from the overlay's upper directory.
 
 ### Stop an Overlay
 
@@ -232,7 +234,26 @@ Options:
 - `--stop` - Stop the overlay after applying
 - `--cleanup` - Cleanup overlay data after applying (implies --stop)
 
-For git repos, this auto-commits any uncommitted changes in the overlay, then merges the overlay branch into the base repo's current branch. For non-git directories, it copies changed files from the upper directory and handles deletions.
+For git repos, this auto-commits any uncommitted changes in the overlay, then merges the overlay branch into the base repo's current branch. For non-git directories, it compares the overlay mount point against the base to copy new/modified files and remove deleted ones. The overlay must be mounted.
+
+### View Agent Logs
+
+```bash
+# Show full log for an overlay
+phantom logs feature-a
+
+# Show last 4096 bytes
+phantom logs feature-a --tail 4096
+
+# Print the log file path (useful for piping)
+phantom logs feature-a --path
+```
+
+Options:
+- `--tail, -n` - Show last N bytes (0 = entire file)
+- `--path` - Print the log file path instead of contents
+
+Agent logs are stored in `~/.phantom/logs/<name>.log` and include stdout/stderr from `phantom run` executions. Each run appends to the log with a timestamped header.
 
 ### Using .env Files
 
@@ -276,6 +297,7 @@ The `.env` file supports:
 | `phantom diff <name>` | Show files changed in an overlay |
 | `phantom commit <name> -m "msg"` | Commit changes in an overlay |
 | `phantom apply <name>` | Apply overlay changes to base directory |
+| `phantom logs <name>` | Show agent execution logs |
 | `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 
@@ -377,9 +399,12 @@ unionfs-fuse -o cow upperdir=RW:lowerdir=RO /mnt/point
 │   │   ├── upper/       # Writable layer
 │   │   └── work/        # Work directory (Linux only)
 │   └── feature-b/
-└── mnt/                 # Mount points (0700 permissions)
-    ├── feature-a/
-    └── feature-b/
+├── mnt/                 # Mount points (0700 permissions)
+│   ├── feature-a/
+│   └── feature-b/
+└── logs/                # Agent execution logs (0700 permissions)
+    ├── feature-a.log
+    └── feature-b.log
 ```
 
 ## Security
