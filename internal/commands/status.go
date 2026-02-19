@@ -119,13 +119,13 @@ func showAllStatus(store *state.Store, mgr overlayManager, format string) error 
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tMOUNTED\tUPTIME\tSIZE")
+	fmt.Fprintln(w, "NAME\tMOUNTED\tUPTIME\tSIZE\tCHANGES")
 
 	for _, ovl := range overlays {
 		status, err := mgr.GetStatus(ovl)
 		if err != nil {
 			log.Debug("Failed to get status for %s: %v", ovl.Name, err)
-			fmt.Fprintf(w, "%s\t?\t?\t?\n", ovl.Name)
+			fmt.Fprintf(w, "%s\t?\t?\t?\t?\n", ovl.Name)
 			continue
 		}
 
@@ -134,11 +134,19 @@ func showAllStatus(store *state.Store, mgr overlayManager, format string) error 
 			mounted = "yes"
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+		a, m, d := countFileChanges(ovl.UpperDir, ovl.BaseDir)
+		total := a + m + d
+		changes := "-"
+		if total > 0 {
+			changes = fmt.Sprintf("%d (+%d ~%d -%d)", total, a, m, d)
+		}
+
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			ovl.Name,
 			mounted,
 			formatDuration(status.Uptime),
 			formatSize(status.SizeBytes),
+			changes,
 		)
 	}
 
