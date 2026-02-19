@@ -423,6 +423,66 @@ phantom template generate --agents claude,aider,gemini -o agents.yaml
 
 Built-in templates: `claude`, `claude-interactive`, `gemini`, `gemini-arg`, `aider`, `vibe`, `copilot`, `codex`. Each template defines the correct agent command and task delivery mode (stdin, placeholder, or argument).
 
+### Rename an Overlay
+
+```bash
+# Rename an overlay (must be stopped first)
+phantom stop feature-a
+phantom rename feature-a feature-auth
+phantom restart feature-auth
+```
+
+Renames the overlay state, directories, mount point, and log file. The overlay must be unmounted first.
+
+### Inspect an Overlay
+
+```bash
+# Full debug view of an overlay
+phantom inspect feature-a
+
+# JSON output
+phantom inspect feature-a --format json
+```
+
+Dumps everything: state, mount status, FUSE PID, git branch/dirty status, file change counts, snapshot count, and log file path. One-stop debug view.
+
+### Detect Merge Conflicts
+
+```bash
+# Check two overlays for conflicting file changes
+phantom conflicts "feature-a feature-b"
+
+# Check multiple overlays, JSON output
+phantom conflicts "auth-agent api-agent test-agent" --format json
+```
+
+Scans overlay upper directories for files changed by more than one overlay. Reports which files would conflict before you try to merge. Pairs well with `run-all` + `apply`.
+
+### Garbage Collection
+
+```bash
+# Clean orphaned resources
+phantom gc
+
+# Preview what would be removed
+phantom gc --dry-run
+```
+
+Removes orphaned overlay data directories, stale mount points, log files for deleted overlays, and broken/orphaned snapshots. More thorough than `prune` which only handles expired overlays.
+
+### Configuration Management
+
+```bash
+# Validate config file
+phantom config validate
+
+# Validate a specific config file
+phantom config validate --path /path/to/config.yaml
+
+# Show resolved configuration
+phantom config show
+```
+
 ### Shell Completion
 
 ```bash
@@ -492,6 +552,12 @@ The `.env` file supports:
 | `phantom health` | Check health of overlays and system |
 | `phantom export <name>` | Export overlay changes as diff or tarball |
 | `phantom clone <src> <dst>` | Clone an overlay to a new name |
+| `phantom rename <old> <new>` | Rename an overlay |
+| `phantom inspect <name>` | Show detailed overlay information |
+| `phantom conflicts "<names>"` | Detect file conflicts between overlays |
+| `phantom gc` | Garbage collect orphaned resources |
+| `phantom config validate` | Validate configuration file |
+| `phantom config show` | Show resolved configuration |
 | `phantom template list` | List available agent templates |
 | `phantom template generate` | Generate agents.yaml from templates |
 | `phantom snapshot save <name>` | Save a snapshot of an overlay |
