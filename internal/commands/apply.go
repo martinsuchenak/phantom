@@ -74,10 +74,25 @@ func processApply(ctx context.Context, name string, dryRun, doStop, doCleanup bo
 		return err
 	}
 
-	gitOps := git.NewOperations()
-	isGit, _ := gitOps.IsGitRepo(ctx, ovl.BaseDir)
+	// Verify overlay is mounted
+	mgr, err := createOverlayManager()
+	if err != nil {
+		return err
+	}
 
-	if isGit && ovl.Branch != "" {
+	mounted, err := mgr.IsMounted(ovl)
+	if err != nil {
+		return fmt.Errorf("failed to check mount status: %w", err)
+	}
+	if !mounted {
+		return fmt.Errorf("overlay %q is not mounted", name)
+	}
+
+	gitOps := git.NewOperations()
+	isBaseGit, _ := gitOps.IsGitRepo(ctx, ovl.BaseDir)
+	isMountGit, _ := gitOps.IsGitRepo(ctx, ovl.MountPoint)
+
+	if isBaseGit && isMountGit && ovl.Branch != "" {
 		err = applyGit(ctx, ovl, gitOps, dryRun)
 	} else {
 		err = applyFileCopy(ovl, dryRun)
@@ -135,47 +150,71 @@ func applyGit(ctx context.Context, ovl *api.Overlay, gitOps *git.Operations, dry
 	return nil
 }
 
-// applyFileCopy copies changed files from the upper directory to the base
+// applyFileCopy copies changed files from the overlay mount point to the base.
+// It walks the mount point and compares against the base to find differences,
+// rather than relying on the upper directory (which has platform-specific behavior).
 func applyFileCopy(ovl *api.Overlay, dryRun bool) error {
-	if ovl.UpperDir == "" {
-		return fmt.Errorf("overlay %q has no upper directory", ovl.Name)
+	mountPoint := ovl.MountPoint
+	if mountPoint == "" {
+		return fmt.Errorf("overlay %q has no mount point", ovl.Name)
 	}
 
 	copied := 0
 	deleted := 0
 
-	err := filepath.Walk(ovl.UpperDir, func(path string, info os.FileInfo, err error) error {
+	// First pass: walk the base directory to find deleted files
+	err := filepath.Walk(ovl.BaseDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 
-		relPath, err := filepath.Rel(ovl.UpperDir, path)
+		relPath, err := filepath.Rel(ovl.BaseDir, path)
 		if err != nil || relPath == "." {
 			return nil
 		}
 
-		// Skip overlayfs work directory internals
-		if strings.HasPrefix(relPath, "work/") || relPath == "work" {
+		// Skip .git directory
+		if relPath == ".git" || strings.HasPrefix(relPath, ".git/") {
+			return nil
+		}
+
+		mountPath := filepath.Join(mountPoint, relPath)
+		if _, err := os.Lstat(mountPath); os.IsNotExist(err) {
+			if dryRun {
+				log.Info("[dry-run] Would delete %s", relPath)
+			} else {
+				if err := os.RemoveAll(path); err != nil {
+					log.Warn("Failed to delete %s: %v", path, err)
+				}
+			}
+			deleted++
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to scan base directory for deletions: %w", err)
+	}
+
+	// Second pass: walk the mount point to find new and modified files
+	err = filepath.Walk(mountPoint, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(mountPoint, path)
+		if err != nil || relPath == "." {
+			return nil
+		}
+
+		// Skip .git directory
+		if relPath == ".git" || strings.HasPrefix(relPath, ".git/") {
 			return nil
 		}
 
 		destPath := filepath.Join(ovl.BaseDir, relPath)
-		baseName := filepath.Base(path)
-
-		// Handle whiteout files (deletions)
-		if strings.HasPrefix(baseName, ".wh.") {
-			deletedName := strings.TrimPrefix(baseName, ".wh.")
-			deletedPath := filepath.Join(filepath.Dir(destPath), deletedName)
-			if dryRun {
-				log.Info("[dry-run] Would delete %s", relPath)
-			} else {
-				if err := os.RemoveAll(deletedPath); err != nil {
-					log.Warn("Failed to delete %s: %v", deletedPath, err)
-				}
-			}
-			deleted++
-			return nil
-		}
 
 		// Handle directories
 		if info.IsDir() {
@@ -185,9 +224,18 @@ func applyFileCopy(ovl *api.Overlay, dryRun bool) error {
 			return nil
 		}
 
-		// Copy file
+		// Check if file differs from base
+		baseInfo, baseErr := os.Stat(destPath)
+		if baseErr == nil && baseInfo.Size() == info.Size() && baseInfo.ModTime().Equal(info.ModTime()) {
+			return nil // Same size and mtime — skip
+		}
+
 		if dryRun {
-			log.Info("[dry-run] Would copy %s", relPath)
+			if os.IsNotExist(baseErr) {
+				log.Info("[dry-run] Would add %s", relPath)
+			} else {
+				log.Info("[dry-run] Would update %s", relPath)
+			}
 		} else {
 			if err := copyFile(path, destPath, info.Mode()); err != nil {
 				return fmt.Errorf("failed to copy %s: %w", relPath, err)
@@ -196,9 +244,8 @@ func applyFileCopy(ovl *api.Overlay, dryRun bool) error {
 		copied++
 		return nil
 	})
-
 	if err != nil {
-		return fmt.Errorf("failed to walk upper directory: %w", err)
+		return fmt.Errorf("failed to walk mount point: %w", err)
 	}
 
 	action := "Applied"
