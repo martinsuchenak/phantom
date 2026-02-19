@@ -48,12 +48,21 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 
 	// Build the command - parse agent string into command and args
 	// This avoids shell injection by not using sh -c
-	cmd := r.buildCommand(ctx, opts.Agent)
+	// Substitute {task} placeholder in agent command with the actual task
+	agentCmd := opts.Agent
+	if opts.Task != "" {
+		agentCmd = strings.ReplaceAll(agentCmd, "{task}", opts.Task)
+	}
+	cmd := r.buildCommand(ctx, agentCmd)
 	cmd.Dir = ovl.MountPoint
 
-	// In headless mode (parallel runs), don't attach stdin and send output only to log
+	// In headless mode (parallel runs), don't attach stdin.
+	// If there's a task and no {task} placeholder was used, pipe it via stdin
+	// so agents like "claude --print" can read it.
 	if !opts.Headless {
 		cmd.Stdin = os.Stdin
+	} else if opts.Task != "" && !strings.Contains(opts.Agent, "{task}") {
+		cmd.Stdin = strings.NewReader(opts.Task)
 	}
 
 	// Set up log file for agent output

@@ -187,20 +187,25 @@ Example `agents.yaml`:
 ```yaml
 agents:
   - name: auth-agent
-    agent: "claude code"
+    agent: "claude --print"
     task: "implement authentication module"
     branch: "feature/auth"
     timeout: 30
   - name: api-agent
-    agent: "aider"
+    agent: 'aider "{task}"'
     task: "build REST API endpoints"
     branch: "feature/api"
   - name: test-agent
-    agent: "copilot"
+    agent: 'claude "{task}"'
     task: "write unit tests"
 ```
 
-Each agent gets its own overlay and git branch. All agents run concurrently. A summary table is printed at the end showing exit codes, durations, and pass/fail status. Agent output is logged to `~/.phantom/logs/<name>.log`.
+Each agent gets its own overlay and git branch. All agents run concurrently in headless mode (no terminal stdin). A summary table is printed at the end showing exit codes, durations, and pass/fail status. Agent output is logged to `~/.phantom/logs/<name>.log`.
+
+Task delivery to agents (in parallel mode):
+- **`{task}` placeholder**: If the `agent` string contains `{task}`, it's replaced with the task text. Example: `agent: 'claude "{task}"'`
+- **stdin piping**: If no `{task}` placeholder is used but a `task` is defined, the task text is piped to the agent's stdin. This works with agents like `claude --print` that read from stdin.
+- **Inline prompt**: You can also embed the prompt directly in the agent command: `agent: 'claude "implement auth"'`
 
 ### Show Changes in an Overlay
 
