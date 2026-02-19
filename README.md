@@ -313,6 +313,60 @@ phantom restart feature-a
 
 If the overlay is already mounted, this is a no-op. The overlay state must still exist in `~/.phantom/state/`.
 
+### Initialize Configuration
+
+```bash
+# Create default config.yaml and example agents.yaml
+phantom init
+
+# Overwrite existing files
+phantom init --force
+```
+
+Creates `~/.phantom/config.yaml` with documented defaults and `~/.phantom/agents.yaml` with example agent definitions. Existing files are skipped unless `--force` is used.
+
+### Health Check
+
+```bash
+# Check health of all overlays and system
+phantom health
+
+# Attempt to fix detected issues (remount stale overlays)
+phantom health --fix
+
+# JSON output
+phantom health --format json
+```
+
+Options:
+- `--fix` - Attempt to fix issues (remount stale overlays, clean zombies)
+- `--format` - Output format: `table` (default), `json`
+
+Checks: FUSE availability, overlay mount status, base/upper directory existence, FUSE process liveness, zombie mount detection.
+
+### Overlay Snapshots
+
+```bash
+# Save a snapshot of an overlay
+phantom snapshot save feature-a
+phantom snapshot save feature-a -s "before-refactor"
+
+# List snapshots
+phantom snapshot list
+phantom snapshot list feature-a
+phantom snapshot list --format json
+
+# Restore a snapshot (overlay must be stopped first)
+phantom stop feature-a
+phantom snapshot restore feature-a feature-a-20260220-143000
+phantom restart feature-a
+
+# Delete a snapshot
+phantom snapshot delete feature-a-20260220-143000
+```
+
+Snapshots copy the overlay's upper directory (all changes) to `~/.phantom/snapshots/<name>/`. Useful for saving a known-good state before risky experiments. The overlay must be unmounted before restoring.
+
 ### Shell Completion
 
 ```bash
@@ -378,6 +432,12 @@ The `.env` file supports:
 | `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 | `phantom run-all <base-dir>` | Run multiple agents in parallel |
+| `phantom init` | Initialize default configuration |
+| `phantom health` | Check health of overlays and system |
+| `phantom snapshot save <name>` | Save a snapshot of an overlay |
+| `phantom snapshot restore <name> <snap>` | Restore overlay from snapshot |
+| `phantom snapshot list [<name>]` | List snapshots |
+| `phantom snapshot delete <snap>` | Delete a snapshot |
 | `phantom completion <shell>` | Generate shell completion scripts |
 
 ### Global Flags
@@ -484,6 +544,10 @@ unionfs-fuse -o cow upperdir=RW:lowerdir=RO /mnt/point
 └── logs/                # Agent execution logs (0700 permissions)
     ├── feature-a.log
     └── feature-b.log
+└── snapshots/           # Overlay snapshots (0700 permissions)
+    └── feature-a-20260220-143000/
+        ├── meta.json
+        └── data/        # Copy of upper directory at snapshot time
 ```
 
 ## Security
