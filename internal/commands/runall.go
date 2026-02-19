@@ -1,0 +1,371 @@
+package commands
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"text/tabwriter"
+	"time"
+
+	"github.com/martinsuchenak/phantom/internal/agent"
+	"github.com/martinsuchenak/phantom/internal/config"
+	"github.com/martinsuchenak/phantom/internal/git"
+	"github.com/martinsuchenak/phantom/internal/state"
+	"github.com/martinsuchenak/phantom/pkg/api"
+	"github.com/paularlott/cli"
+	"gopkg.in/yaml.v3"
+)
+
+// NewRunAllCommand creates the run-all command
+func NewRunAllCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "run-all",
+		Usage:       "Run multiple agents in parallel",
+		Description: "Creates separate overlays and runs multiple agents concurrently on the same codebase. Define agents via a YAML config file or inline.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "config",
+				Aliases: []string{"c"},
+				Usage:   "Path to agents YAML config file",
+			},
+			&cli.StringFlag{
+				Name:  "agents",
+				Usage: "Comma-separated agent commands (simple mode)",
+			},
+			&cli.IntFlag{
+				Name:         "timeout",
+				Usage:        "Global timeout per agent in minutes (max 1440)",
+				DefaultValue: 0,
+			},
+			&cli.BoolFlag{
+				Name:  "cleanup",
+				Usage: "Cleanup all overlays after completion",
+			},
+			&cli.BoolFlag{
+				Name:  "push",
+				Usage: "Push branches to remote on completion",
+			},
+			&cli.StringFlag{
+				Name:         "format",
+				Usage:        "Summary output format (table, json)",
+				DefaultValue: "table",
+			},
+		},
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:     "base-dir",
+				Usage:    "Base directory to overlay",
+				Required: true,
+			},
+		},
+		Run: doRunAll,
+	}
+}
+
+// agentDef defines a single agent in the config file
+type agentDef struct {
+	Name    string `yaml:"name" json:"name"`
+	Agent   string `yaml:"agent" json:"agent"`
+	Task    string `yaml:"task" json:"task"`
+	Branch  string `yaml:"branch" json:"branch"`
+	Timeout int    `yaml:"timeout" json:"timeout"` // minutes, 0 = use global
+}
+
+// agentsConfig is the YAML config file structure
+type agentsConfig struct {
+	Agents []agentDef `yaml:"agents"`
+}
+
+// agentResult holds the outcome of a single agent run
+type agentResult struct {
+	Name     string        `json:"name"`
+	Agent    string        `json:"agent"`
+	ExitCode int           `json:"exit_code"`
+	Duration time.Duration `json:"-"`
+	Error    string        `json:"error,omitempty"`
+}
+
+func doRunAll(ctx context.Context, cmd *cli.Command) error {
+	baseDir := cmd.GetStringArg("base-dir")
+	configPath := cmd.GetString("config")
+	agentsInline := cmd.GetString("agents")
+	timeoutMinutes := cmd.GetInt("timeout")
+	doCleanup := cmd.GetBool("cleanup")
+	doPush := cmd.GetBool("push")
+	format := cmd.GetString("format")
+
+	if configPath == "" && agentsInline == "" {
+		return fmt.Errorf("either --config or --agents is required")
+	}
+
+	// Parse agent definitions
+	var agents []agentDef
+	var err error
+
+	if configPath != "" {
+		agents, err = loadAgentsConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load agents config: %w", err)
+		}
+	} else {
+		agents = parseInlineAgents(agentsInline)
+	}
+
+	if len(agents) == 0 {
+		return fmt.Errorf("no agents defined")
+	}
+
+	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format)
+}
+
+func loadAgentsConfig(path string) ([]agentDef, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg agentsConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	// Validate
+	for i, a := range cfg.Agents {
+		if a.Agent == "" {
+			return nil, fmt.Errorf("agent[%d]: 'agent' command is required", i)
+		}
+		if a.Name == "" {
+			cfg.Agents[i].Name = fmt.Sprintf("agent-%d", i+1)
+		}
+	}
+
+	return cfg.Agents, nil
+}
+
+func parseInlineAgents(inline string) []agentDef {
+	parts := strings.Split(inline, ",")
+	var agents []agentDef
+	for i, part := range parts {
+		cmd := strings.TrimSpace(part)
+		if cmd == "" {
+			continue
+		}
+		agents = append(agents, agentDef{
+			Name:  fmt.Sprintf("agent-%d", i+1),
+			Agent: cmd,
+		})
+	}
+	return agents
+}
+
+func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string) error {
+	absBaseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve base directory: %w", err)
+	}
+
+	// Run auto-cleanup
+	runAutoCleanup()
+
+	log.Info("Starting %d agent(s) in parallel on %s", len(agents), absBaseDir)
+
+	store, err := state.NewStore(cfg.GetStatePath())
+	if err != nil {
+		return fmt.Errorf("failed to initialize state store: %w", err)
+	}
+
+	mgr, err := createOverlayManager()
+	if err != nil {
+		return err
+	}
+
+	gitOps := git.NewOperations()
+	isGit, _ := gitOps.IsGitRepo(ctx, absBaseDir)
+
+	// Phase 1: Create all overlays sequentially (mount operations shouldn't race)
+	type agentContext struct {
+		def agentDef
+		ovl *api.Overlay
+	}
+	var agentContexts []agentContext
+
+	for _, def := range agents {
+		// Check for name collision
+		if store.Exists(def.Name) {
+			log.Warn("Overlay %q already exists, skipping", def.Name)
+			continue
+		}
+
+		branch := def.Branch
+		if branch == "" && isGit && cfg.Git.AutoBranch {
+			branch = cfg.Git.BranchPrefix + def.Name
+		}
+
+		opts := &api.CreateOptions{
+			Name:    def.Name,
+			BaseDir: absBaseDir,
+			Branch:  branch,
+		}
+
+		ovl, err := mgr.Create(opts)
+		if err != nil {
+			log.Error("Failed to create overlay %q: %v", def.Name, err)
+			continue
+		}
+
+		// Handle git branch
+		if isGit && branch != "" {
+			branchExists, _ := gitOps.BranchExists(ctx, absBaseDir, branch)
+			if !branchExists {
+				if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branch, ""); err != nil {
+					log.Warn("[%s] Failed to create branch %s: %v", def.Name, branch, err)
+				}
+			} else {
+				if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branch); err != nil {
+					log.Warn("[%s] Failed to switch to branch %s: %v", def.Name, branch, err)
+				}
+			}
+		}
+
+		if err := store.Save(ovl); err != nil {
+			mgr.Cleanup(ovl)
+			log.Error("Failed to save state for %q: %v", def.Name, err)
+			continue
+		}
+
+		log.Info("[%s] Overlay created at %s", def.Name, ovl.MountPoint)
+		agentContexts = append(agentContexts, agentContext{def: def, ovl: ovl})
+	}
+
+	if len(agentContexts) == 0 {
+		return fmt.Errorf("no overlays were created successfully")
+	}
+
+	// Phase 2: Run all agents in parallel
+	var wg sync.WaitGroup
+	results := make([]agentResult, len(agentContexts))
+
+	for i, ac := range agentContexts {
+		wg.Add(1)
+		go func(idx int, ac agentContext) {
+			defer wg.Done()
+			results[idx] = runSingleAgent(ctx, ac.def, ac.ovl, absBaseDir, globalTimeout, doPush)
+		}(i, ac)
+	}
+
+	wg.Wait()
+
+	// Phase 3: Cleanup if requested
+	if doCleanup {
+		for _, ac := range agentContexts {
+			log.Debug("Cleaning up overlay %q", ac.def.Name)
+			if err := mgr.Cleanup(ac.ovl); err != nil {
+				log.Warn("Failed to cleanup %q: %v", ac.def.Name, err)
+			}
+			store.Delete(ac.def.Name)
+		}
+	}
+
+	// Phase 4: Print summary
+	return printRunAllSummary(results, format)
+}
+
+func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBaseDir string, globalTimeout int, doPush bool) agentResult {
+	result := agentResult{
+		Name:  def.Name,
+		Agent: def.Agent,
+	}
+
+	// Determine timeout
+	timeoutMinutes := def.Timeout
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = globalTimeout
+	}
+	var timeout time.Duration
+	if timeoutMinutes > 0 {
+		if timeoutMinutes > config.MaxTimeoutMinutes {
+			timeoutMinutes = config.MaxTimeoutMinutes
+		}
+		timeout = time.Duration(timeoutMinutes) * time.Minute
+	} else if cfg != nil && cfg.Agent.DefaultTimeoutMinutes > 0 {
+		timeout = time.Duration(cfg.Agent.DefaultTimeoutMinutes) * time.Minute
+	} else {
+		timeout = 60 * time.Minute
+	}
+
+	runner := agent.NewRunner(cfg, log)
+
+	runOpts := &api.RunOptions{
+		Agent:     def.Agent,
+		Task:      def.Task,
+		BaseDir:   absBaseDir,
+		Name:      def.Name,
+		Timeout:   timeout,
+		PushOnEnd: doPush,
+		Headless:  true,
+	}
+
+	startTime := time.Now()
+	exitCode, err := runner.Run(ctx, ovl, runOpts)
+	result.Duration = time.Since(startTime)
+	result.ExitCode = exitCode
+
+	if err != nil {
+		result.Error = err.Error()
+	}
+
+	return result
+}
+
+func printRunAllSummary(results []agentResult, format string) error {
+	if format == "json" {
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	fmt.Println()
+	log.Info("=== Run Summary ===")
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "AGENT\tCOMMAND\tEXIT\tDURATION\tSTATUS")
+
+	failed := 0
+	for _, r := range results {
+		status := "ok"
+		if r.ExitCode != 0 {
+			status = "FAILED"
+			failed++
+		}
+		if r.Error != "" && r.ExitCode == 0 {
+			status = "ERROR"
+			failed++
+		}
+
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
+			r.Name,
+			r.Agent,
+			r.ExitCode,
+			formatDuration(r.Duration),
+			status,
+		)
+	}
+	w.Flush()
+
+	fmt.Println()
+	if failed > 0 {
+		log.Info("%d/%d agent(s) failed", failed, len(results))
+		os.Exit(1)
+	} else {
+		log.Info("All %d agent(s) completed successfully", len(results))
+	}
+
+	return nil
+}

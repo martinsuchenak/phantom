@@ -50,15 +50,24 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	// This avoids shell injection by not using sh -c
 	cmd := r.buildCommand(ctx, opts.Agent)
 	cmd.Dir = ovl.MountPoint
-	cmd.Stdin = os.Stdin
+
+	// In headless mode (parallel runs), don't attach stdin and send output only to log
+	if !opts.Headless {
+		cmd.Stdin = os.Stdin
+	}
 
 	// Set up log file for agent output
 	logFile, err := r.openLogFile(ovl.Name)
 	if err != nil {
 		r.log.Debug("Failed to create log file: %v", err)
-		// Fall back to stdout/stderr only
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		if opts.Headless {
+			// In headless mode with no log file, discard output
+			cmd.Stdout = io.Discard
+			cmd.Stderr = io.Discard
+		} else {
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+		}
 	} else {
 		defer logFile.Close()
 		// Write header to log
@@ -68,9 +77,16 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 		fmt.Fprintf(logFile, "Task:     %s\n", opts.Task)
 		fmt.Fprintf(logFile, "Started:  %s\n", time.Now().Format(time.RFC3339))
 		fmt.Fprintf(logFile, "=========================\n\n")
-		// Tee output to both terminal and log file
-		cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
-		cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
+
+		if opts.Headless {
+			// Headless: output goes only to log file
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+		} else {
+			// Interactive: tee output to both terminal and log file
+			cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
+			cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
+		}
 	}
 
 	// Set environment variables

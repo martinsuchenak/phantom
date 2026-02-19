@@ -44,6 +44,7 @@ type RunOptions struct {
 	Timeout   time.Duration
 	Cleanup   bool
 	PushOnEnd bool
+	Headless  bool // No stdin, log-only output (for parallel runs)
 }
 
 // Error codes

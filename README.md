@@ -158,6 +158,50 @@ Environment variables set for the agent:
 - `OVERLAY_TASK` - Task description
 - `OVERLAY_ENABLED` - Always "true"
 
+### Run Multiple Agents in Parallel
+
+```bash
+# Using a config file
+phantom run-all /path/to/repo --config agents.yaml
+
+# Using inline agent list
+phantom run-all /path/to/repo --agents "claude,copilot,aider"
+
+# With global options
+phantom run-all /path/to/repo --config agents.yaml --timeout 30 --cleanup --push
+
+# JSON summary output
+phantom run-all /path/to/repo --config agents.yaml --format json
+```
+
+Options:
+- `--config, -c` - Path to agents YAML config file
+- `--agents` - Comma-separated agent commands (simple mode)
+- `--timeout` - Global timeout per agent in minutes (max 1440)
+- `--cleanup` - Cleanup all overlays after completion
+- `--push` - Push branches to remote on completion
+- `--format` - Summary output format: `table` (default), `json`
+
+Example `agents.yaml`:
+
+```yaml
+agents:
+  - name: auth-agent
+    agent: "claude code"
+    task: "implement authentication module"
+    branch: "feature/auth"
+    timeout: 30
+  - name: api-agent
+    agent: "aider"
+    task: "build REST API endpoints"
+    branch: "feature/api"
+  - name: test-agent
+    agent: "copilot"
+    task: "write unit tests"
+```
+
+Each agent gets its own overlay and git branch. All agents run concurrently. A summary table is printed at the end showing exit codes, durations, and pass/fail status. Agent output is logged to `~/.phantom/logs/<name>.log`.
+
 ### Show Changes in an Overlay
 
 ```bash
@@ -328,6 +372,7 @@ The `.env` file supports:
 | `phantom restart <name>` | Remount an unmounted overlay |
 | `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
+| `phantom run-all <base-dir>` | Run multiple agents in parallel |
 | `phantom completion <shell>` | Generate shell completion scripts |
 
 ### Global Flags
