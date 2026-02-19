@@ -9,6 +9,7 @@ A Go-based CLI tool for managing overlay filesystems to enable multiple AI agent
 - **Optional persistence** across reboots
 - **Agent wrapper** for running commands in overlay context
 - **Single binary** distribution
+- **Auto-cleanup**: expired overlays are automatically removed based on configurable age threshold
 - **Secure by default**: restrictive file permissions, input validation
 
 ## Installation
@@ -155,6 +156,45 @@ Environment variables set for the agent:
 - `OVERLAY_TASK` - Task description
 - `OVERLAY_ENABLED` - Always "true"
 
+### Show Changes in an Overlay
+
+```bash
+# Show all files changed in an overlay
+phantom diff feature-a
+
+# Summary statistics only
+phantom diff feature-a --stat
+
+# Output as JSON
+phantom diff feature-a --format json
+
+# Simple output (git-style A/M/D prefixes)
+phantom diff feature-a --format simple
+```
+
+Options:
+- `--format` - Output format: `table` (default), `json`, `simple`
+- `--stat` - Show summary statistics only (added/modified/deleted counts)
+
+### Prune Stale Overlays
+
+```bash
+# Remove all unmounted and expired overlays
+phantom prune
+
+# Preview what would be removed
+phantom prune --dry-run
+
+# Also unmount and remove expired overlays that are still mounted
+phantom prune --force
+```
+
+Options:
+- `--dry-run` - Show what would be removed without actually removing
+- `--force, -f` - Also remove mounted but expired overlays (will unmount them)
+
+Persistent overlays are always skipped. The expiry threshold is controlled by `overlay.auto_cleanup_days` in the config (default: 7 days).
+
 ### Using .env Files
 
 Phantom automatically loads `.env` files from the current directory. This allows you to set default values for flags:
@@ -194,6 +234,8 @@ The `.env` file supports:
 | `phantom stop <name>` | Unmount and optionally cleanup/push |
 | `phantom list` | List all active overlays |
 | `phantom status [<name>]` | Show overlay state |
+| `phantom diff <name>` | Show files changed in an overlay |
+| `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 
 ### Global Flags
@@ -238,8 +280,17 @@ agent_env:
 The configuration is validated on load:
 - `logging.level` must be one of: trace, debug, info, warn, error, fatal
 - `agent.default_timeout_minutes` must be between 0 and 1440
-- `overlay.auto_cleanup_days` cannot be negative
+- `overlay.auto_cleanup_days` cannot be negative (set to 0 to disable auto-cleanup)
 - `state_dir` cannot be empty
+
+### Auto-Cleanup Behavior
+
+The `overlay.auto_cleanup_days` setting (default: 7) controls automatic garbage collection of old overlays. When `phantom start` or `phantom run` is executed, Phantom silently removes overlays that are:
+- Older than the configured threshold
+- Not currently mounted
+- Not marked as persistent
+
+Set `auto_cleanup_days` to `0` to disable. For manual control, use `phantom prune`.
 
 ## How It Works
 
