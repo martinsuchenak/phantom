@@ -21,7 +21,7 @@ type snapshotMeta struct {
 }
 
 func getSnapshotsDir() string {
-	return filepath.Join(cfg.GetStatePath(), "snapshots")
+	return cfg.GetSnapshotsPath()
 }
 
 func doSnapshotSave(ctx context.Context, cmd *cli.Command) error {

@@ -11,6 +11,7 @@ import (
 // Config represents the application configuration
 type Config struct {
 	StateDir string   `yaml:"state_dir"`
+	Paths    Paths    `yaml:"paths"`
 	Logging  Logging  `yaml:"logging"`
 	Overlay  Overlay  `yaml:"overlay"`
 	Git      Git      `yaml:"git"`
@@ -18,6 +19,14 @@ type Config struct {
 	Linux    Linux    `yaml:"linux"`
 	Agent    Agent    `yaml:"agent"`
 	AgentEnv []string `yaml:"agent_env"`
+}
+
+// Paths allows overriding individual directory locations
+type Paths struct {
+	Overlays  string `yaml:"overlays"`  // overlay data (upper dirs)
+	Mounts    string `yaml:"mounts"`    // mount points
+	Logs      string `yaml:"logs"`      // agent logs
+	Snapshots string `yaml:"snapshots"` // snapshots
 }
 
 // Logging configuration
@@ -141,6 +150,10 @@ func Load(path string) (*Config, error) {
 	// Expand home directory in paths
 	cfg.StateDir = expandHome(cfg.StateDir)
 	cfg.Logging.File = expandHome(cfg.Logging.File)
+	cfg.Paths.Overlays = expandHome(cfg.Paths.Overlays)
+	cfg.Paths.Mounts = expandHome(cfg.Paths.Mounts)
+	cfg.Paths.Logs = expandHome(cfg.Paths.Logs)
+	cfg.Paths.Snapshots = expandHome(cfg.Paths.Snapshots)
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
@@ -205,16 +218,34 @@ func (c *Config) GetStatePath() string {
 
 // GetOverlaysPath returns the path where overlay data is stored
 func (c *Config) GetOverlaysPath() string {
+	if c.Paths.Overlays != "" {
+		return c.Paths.Overlays
+	}
 	return filepath.Join(c.StateDir, "overlays")
 }
 
 // GetMountPath returns the path where overlays are mounted
 func (c *Config) GetMountPath() string {
+	if c.Paths.Mounts != "" {
+		return c.Paths.Mounts
+	}
 	return filepath.Join(c.StateDir, "mnt")
 }
+
 // GetLogsPath returns the path where agent logs are stored
 func (c *Config) GetLogsPath() string {
+	if c.Paths.Logs != "" {
+		return c.Paths.Logs
+	}
 	return filepath.Join(c.StateDir, "logs")
+}
+
+// GetSnapshotsPath returns the path where snapshots are stored
+func (c *Config) GetSnapshotsPath() string {
+	if c.Paths.Snapshots != "" {
+		return c.Paths.Snapshots
+	}
+	return filepath.Join(c.StateDir, "snapshots")
 }
 
 func expandHome(path string) string {

@@ -16,6 +16,11 @@ func NewInitCommand() *cli.Command {
 		Usage:       "Initialize Phantom configuration",
 		Description: "Creates default config.yaml and an example agents.yaml in ~/.phantom/. Existing files are not overwritten unless --force is used.",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "output",
+				Aliases: []string{"o"},
+				Usage:   "Output directory (default: ~/.phantom)",
+			},
 			&cli.BoolFlag{
 				Name:    "force",
 				Aliases: []string{"f"},
@@ -30,6 +35,13 @@ const defaultConfigYAML = `# Phantom configuration
 # See: https://github.com/martinsuchenak/phantom
 
 state_dir: "~/.phantom"
+
+# Override individual directory locations (empty = use state_dir defaults)
+paths:
+  overlays: ""                     # overlay data (upper dirs), default: <state_dir>/overlays
+  mounts: ""                       # mount points, default: <state_dir>/mnt
+  logs: ""                         # agent logs, default: <state_dir>/logs
+  snapshots: ""                    # snapshots, default: <state_dir>/snapshots
 
 logging:
   level: info                      # trace, debug, info, warn, error, fatal
@@ -86,13 +98,22 @@ agents:
 
 func doInit(ctx context.Context, cmd *cli.Command) error {
 	force := cmd.GetBool("force")
+	output := cmd.GetString("output")
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+	var phantomDir string
+	if output != "" {
+		absPath, err := filepath.Abs(output)
+		if err != nil {
+			return fmt.Errorf("failed to resolve output path: %w", err)
+		}
+		phantomDir = absPath
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		phantomDir = filepath.Join(homeDir, ".phantom")
 	}
-
-	phantomDir := filepath.Join(homeDir, ".phantom")
 	if err := os.MkdirAll(phantomDir, 0700); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}

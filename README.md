@@ -316,14 +316,21 @@ If the overlay is already mounted, this is a no-op. The overlay state must still
 ### Initialize Configuration
 
 ```bash
-# Create default config.yaml and example agents.yaml
+# Create default config.yaml and example agents.yaml in ~/.phantom/
 phantom init
+
+# Output to a custom directory
+phantom init --output /path/to/dir
 
 # Overwrite existing files
 phantom init --force
 ```
 
-Creates `~/.phantom/config.yaml` with documented defaults and `~/.phantom/agents.yaml` with example agent definitions. Existing files are skipped unless `--force` is used.
+Options:
+- `--output, -o` - Output directory (default: `~/.phantom`)
+- `--force, -f` - Overwrite existing files
+
+Creates `config.yaml` with documented defaults and `agents.yaml` with example agent definitions. Existing files are skipped unless `--force` is used.
 
 ### Health Check
 
@@ -451,6 +458,11 @@ Configuration is stored in `~/.phantom/config.yaml`:
 
 ```yaml
 state_dir: "~/.phantom"
+paths:
+  overlays: ""                   # default: <state_dir>/overlays
+  mounts: ""                     # default: <state_dir>/mnt
+  logs: ""                       # default: <state_dir>/logs
+  snapshots: ""                  # default: <state_dir>/snapshots
 logging:
   level: info                    # trace, debug, info, warn, error, fatal
   file: "~/.phantom/phantom.log"
