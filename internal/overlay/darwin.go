@@ -39,13 +39,13 @@ func NewManager(stateDir string, unionfsPath string, fuseOptions []string, _ boo
 		}
 	}
 
-	// Auto-detect unionfs-fuse path if not specified
+	// Auto-detect unionfs path if not specified
 	if unionfsPath == "" {
 		unionfsPath = findUnionFS()
 	}
 
 	if unionfsPath == "" {
-		return nil, api.NewError(api.ErrFUSENotFound, "unionfs-fuse not found in PATH", nil)
+		return nil, api.NewError(api.ErrFUSENotFound, "unionfs not found (install with: brew install unionfs-fuse)", nil)
 	}
 
 	// Default FUSE options
@@ -62,10 +62,13 @@ func NewManager(stateDir string, unionfsPath string, fuseOptions []string, _ boo
 	}, nil
 }
 
-// findUnionFS attempts to locate unionfs-fuse binary
+// findUnionFS attempts to locate unionfs binary
 func findUnionFS() string {
-	// Common paths to check
+	// Common paths to check - try both "unionfs" and "unionfs-fuse"
 	paths := []string{
+		"/usr/local/bin/unionfs",
+		"/opt/homebrew/bin/unionfs",
+		"/usr/bin/unionfs",
 		"/usr/local/bin/unionfs-fuse",
 		"/opt/homebrew/bin/unionfs-fuse",
 		"/usr/bin/unionfs-fuse",
@@ -77,7 +80,10 @@ func findUnionFS() string {
 		}
 	}
 
-	// Check PATH
+	// Check PATH - try unionfs first, then unionfs-fuse
+	if path, err := exec.LookPath("unionfs"); err == nil {
+		return path
+	}
 	if path, err := exec.LookPath("unionfs-fuse"); err == nil {
 		return path
 	}
