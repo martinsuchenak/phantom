@@ -77,6 +77,9 @@ type agentDef struct {
 
 // agentsConfig is the YAML config file structure
 type agentsConfig struct {
+	Mode   string     `yaml:"mode"`   // "parallel" (default) or "sequential"
+	Name   string     `yaml:"name"`   // overlay name for sequential mode
+	Branch string     `yaml:"branch"` // branch for sequential mode
 	Agents []agentDef `yaml:"agents"`
 }
 
@@ -117,6 +120,15 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 
 	if len(agents) == 0 {
 		return fmt.Errorf("no agents defined")
+	}
+
+	// If config specifies sequential mode, delegate to chain execution
+	if configPath != "" {
+		mode, chainName, chainBranch := getConfigMode(configPath)
+		if mode == "sequential" {
+			steps := agentsToChainSteps(agents)
+			return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, false, format)
+		}
 	}
 
 	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format)
@@ -368,4 +380,35 @@ func printRunAllSummary(results []agentResult, format string) error {
 	}
 
 	return nil
+}
+
+// getConfigMode reads the mode, name, and branch from a YAML config file
+func getConfigMode(path string) (string, string, string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "parallel", "", ""
+	}
+	var cfg agentsConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return "parallel", "", ""
+	}
+	mode := cfg.Mode
+	if mode == "" {
+		mode = "parallel"
+	}
+	return mode, cfg.Name, cfg.Branch
+}
+
+// agentsToChainSteps converts agentDef slice to chainStep slice for sequential mode
+func agentsToChainSteps(agents []agentDef) []chainStep {
+	steps := make([]chainStep, len(agents))
+	for i, a := range agents {
+		steps[i] = chainStep{
+			Name:    a.Name,
+			Agent:   a.Agent,
+			Task:    a.Task,
+			Timeout: a.Timeout,
+		}
+	}
+	return steps
 }

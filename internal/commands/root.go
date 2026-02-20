@@ -73,6 +73,7 @@ func Execute() {
 			NewLogsCommand(),
 			NewRestartCommand(),
 			NewRunAllCommand(),
+			NewRunChainCommand(),
 			NewInitCommand(),
 			NewHealthCommand(),
 			NewSnapshotCommand(),

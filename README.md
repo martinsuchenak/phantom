@@ -207,6 +207,78 @@ Task delivery to agents (in parallel mode):
 - **stdin piping**: If no `{task}` placeholder is used but a `task` is defined, the task text is piped to the agent's stdin. This works with agents like `claude --print` that read from stdin.
 - **Inline prompt**: You can also embed the prompt directly in the agent command: `agent: 'claude "implement auth"'`
 
+#### Sequential Mode
+
+You can run agents sequentially on a single overlay by adding `mode: sequential` to your config:
+
+```yaml
+mode: sequential
+name: feature-pipeline
+branch: feature/full-stack
+agents:
+  - name: implement
+    agent: "claude --print"
+    task: "implement the authentication module"
+  - name: test
+    agent: "claude --print"
+    task: "write unit tests for the authentication module"
+  - name: lint
+    agent: "aider --message \"{task}\""
+    task: "fix all linting errors"
+```
+
+In sequential mode, one overlay is created and each agent runs in order, building on the previous agent's work. This is equivalent to using `phantom run-chain` (see below).
+
+### Run Agents Sequentially (Chain)
+
+```bash
+# Using a config file
+phantom run-chain /path/to/repo --config chain.yaml
+
+# Using inline steps
+phantom run-chain /path/to/repo --steps "claude --print,aider,gemini"
+
+# With options
+phantom run-chain /path/to/repo --config chain.yaml --name my-pipeline --branch feature/full --timeout 30 --cleanup --push
+
+# Continue even if a step fails
+phantom run-chain /path/to/repo --config chain.yaml --continue-on-error
+
+# JSON summary
+phantom run-chain /path/to/repo --config chain.yaml --format json
+```
+
+Options:
+- `--config, -c` - Path to chain YAML config file
+- `--steps` - Comma-separated agent commands (simple mode)
+- `--name, -n` - Overlay name (auto-generated if not specified)
+- `--branch, -b` - Git branch name
+- `--timeout` - Global timeout per step in minutes (max 1440)
+- `--cleanup` - Cleanup overlay after completion
+- `--push` - Push branch to remote on completion
+- `--continue-on-error` - Keep running remaining steps even if one fails
+- `--format` - Summary output format: `table` (default), `json`
+
+Example `chain.yaml`:
+
+```yaml
+name: feature-pipeline
+branch: feature/auth
+steps:
+  - name: implement
+    agent: "claude --print"
+    task: "implement authentication module"
+    timeout: 30
+  - name: test
+    agent: "claude --print"
+    task: "write comprehensive unit tests"
+  - name: lint-fix
+    agent: "aider --message \"{task}\""
+    task: "fix all linting and formatting issues"
+```
+
+Each step runs in the same overlay, so later steps see all changes from earlier steps. The chain stops on the first failure unless `--continue-on-error` is set. A summary table is printed at the end.
+
 ### Show Changes in an Overlay
 
 ```bash
@@ -548,6 +620,7 @@ The `.env` file supports:
 | `phantom prune` | Remove stale and expired overlays |
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 | `phantom run-all <base-dir>` | Run multiple agents in parallel |
+| `phantom run-chain <base-dir>` | Run agents sequentially on one overlay |
 | `phantom init` | Initialize default configuration |
 | `phantom health` | Check health of overlays and system |
 | `phantom export <name>` | Export overlay changes as diff or tarball |
