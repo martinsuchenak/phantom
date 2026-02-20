@@ -252,3 +252,97 @@ func TestStoreFileFormat(t *testing.T) {
 		t.Errorf("expected file permissions 0600, got %v", info.Mode().Perm())
 	}
 }
+
+
+func TestLoadEmptyName(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-state-empty-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, _ := NewStore(tmpDir)
+	_, err = store.Load("")
+	if err == nil {
+		t.Error("expected error for empty name")
+	}
+}
+
+func TestDeleteEmptyName(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-state-delempty-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, _ := NewStore(tmpDir)
+	err = store.Delete("")
+	if err == nil {
+		t.Error("expected error for empty name")
+	}
+}
+
+func TestDeleteNonExistent(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-state-delnone-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, _ := NewStore(tmpDir)
+	err = store.Delete("nonexistent")
+	if err != nil {
+		t.Errorf("delete non-existent should not error, got: %v", err)
+	}
+}
+
+func TestLoadAllWithInvalidJSON(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-state-badjson-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, _ := NewStore(tmpDir)
+
+	// Write a valid overlay
+	store.Save(&api.Overlay{
+		Name:      "valid",
+		BaseDir:   "/base",
+		CreatedAt: time.Now(),
+	})
+
+	// Write invalid JSON file
+	stateDir := filepath.Join(tmpDir, "state")
+	os.WriteFile(filepath.Join(stateDir, "invalid.json"), []byte("{bad json"), 0600)
+
+	// Write a non-json file (should be skipped)
+	os.WriteFile(filepath.Join(stateDir, "readme.txt"), []byte("skip me"), 0600)
+
+	overlays, err := store.LoadAll()
+	if err != nil {
+		t.Fatalf("LoadAll failed: %v", err)
+	}
+
+	// Should only load the valid one
+	if len(overlays) != 1 {
+		t.Errorf("expected 1 valid overlay, got %d", len(overlays))
+	}
+}
+
+func TestLoadAllEmpty(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-state-empty-all-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, _ := NewStore(tmpDir)
+	overlays, err := store.LoadAll()
+	if err != nil {
+		t.Fatalf("LoadAll failed: %v", err)
+	}
+	if len(overlays) != 0 {
+		t.Errorf("expected 0 overlays, got %d", len(overlays))
+	}
+}

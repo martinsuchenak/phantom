@@ -59,41 +59,25 @@ func TestHelperProcess(t *testing.T) {
 			fmt.Fprintf(os.Stderr, "Mount point does not exist: %s\n", mountPoint)
 			os.Exit(1)
 		}
-		// Simulate success (run in foreground indefinitely to simulate a deacon/process?)
-		// But in our case, the manager runs it and expects it to start.
-		// If we exit 0 immediately, it's like it ran successfully.
-		// However, real unionfs-fuse might fork.
-		// Our Darwin code simply calls cmd.Start().
-		// If we exit immediately, cmd.Wait() will return nil.
-		// We'll simulate a running process by sleeping a bit if needed, but for Start() verification
-		// we just need it to start.
-
-		// For the PID test, we might want to stay alive.
-		// But the Manager.Mount code calls cmd.Start(), then releases the process.
-		// We can just exit 0.
 		os.Exit(0)
 
 	case "umount":
 		if len(cmdArgs) == 0 {
 			os.Exit(1)
 		}
-		// If args contains -f, it's a force unmount
-		// We can just exit 0 to simulate success
 		os.Exit(0)
 
 	case "mount":
-		// Print fake mount output
-		// We need to output lines that contain the mount points we're looking for
-		// Ideally we can control this via env var or just output everything we know about
-		// For now, let's output a generic list plus any "test-ovl" paths if we can guess them
-		// But IsMounted looks for specific overlay.MountPoint.
-		// A simple way is to mock "everything is mounted" or control it via env var GO_TEST_MOUNTED_PATHS
 		mountedPaths := os.Getenv("GO_TEST_MOUNTED_PATHS")
 		if mountedPaths != "" {
 			for _, path := range filepath.SplitList(mountedPaths) {
 				fmt.Printf("map %s on %s (fuse)\n", path, path)
 			}
 		}
+		os.Exit(0)
+
+	case "ps":
+		// Mock ps command — return empty output (no unionfs process found)
 		os.Exit(0)
 
 	default:

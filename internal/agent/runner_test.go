@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -304,5 +306,223 @@ func TestRunWithParsedCommand(t *testing.T) {
 	}
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+}
+
+
+func TestRunHeadless(t *testing.T) {
+	cfg := config.DefaultConfig()
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-headless-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	overlay := &api.Overlay{
+		Name:       "headless-test",
+		MountPoint: tmpDir,
+		BaseDir:    "/base/test",
+	}
+
+	opts := &api.RunOptions{
+		Agent:    "echo headless",
+		Task:     "headless task",
+		Headless: true,
+	}
+
+	exitCode, err := runner.Run(context.Background(), overlay, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+}
+
+func TestRunHeadlessWithTaskStdin(t *testing.T) {
+	cfg := config.DefaultConfig()
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-stdin-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	overlay := &api.Overlay{
+		Name:       "stdin-test",
+		MountPoint: tmpDir,
+	}
+
+	// Agent without {task} placeholder + headless + task = stdin pipe
+	opts := &api.RunOptions{
+		Agent:    "cat",
+		Task:     "piped input",
+		Headless: true,
+	}
+
+	exitCode, err := runner.Run(context.Background(), overlay, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+}
+
+func TestRunWithTaskPlaceholder(t *testing.T) {
+	cfg := config.DefaultConfig()
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-placeholder-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	overlay := &api.Overlay{
+		Name:       "placeholder-test",
+		MountPoint: tmpDir,
+	}
+
+	opts := &api.RunOptions{
+		Agent: `echo "{task}"`,
+		Task:  "my task",
+	}
+
+	exitCode, err := runner.Run(context.Background(), overlay, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+}
+
+func TestOpenLogFile(t *testing.T) {
+	cfg := config.DefaultConfig()
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-logfile-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg.Paths.Logs = filepath.Join(tmpDir, "logs")
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	f, err := runner.openLogFile("test-overlay")
+	if err != nil {
+		t.Fatalf("openLogFile failed: %v", err)
+	}
+	defer f.Close()
+
+	// Write something
+	f.WriteString("test log\n")
+
+	// Verify file exists
+	logPath := filepath.Join(tmpDir, "logs", "test-overlay.log")
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("log file not created: %v", err)
+	}
+	if string(data) != "test log\n" {
+		t.Errorf("log content = %q, want %q", string(data), "test log\n")
+	}
+}
+
+
+func TestBuildCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	// Test normal command
+	cmd := runner.buildCommand(context.Background(), "echo hello world")
+	if cmd.Path == "" {
+		t.Error("expected non-empty command path")
+	}
+
+	// Test empty command (fallback)
+	cmd2 := runner.buildCommand(context.Background(), "")
+	_ = cmd2 // just verify it doesn't panic
+}
+
+func TestBuildEnv_NoTask(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.AgentEnv = nil
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	overlay := &api.Overlay{
+		Name:       "test",
+		MountPoint: "/mnt",
+		BaseDir:    "/base",
+	}
+	opts := &api.RunOptions{}
+
+	env := runner.buildEnv(overlay, opts)
+	found := false
+	for _, e := range env {
+		if e == "OVERLAY_NAME=test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected OVERLAY_NAME in env")
+	}
+}
+
+
+func TestHandleGitOperations(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Git.AutoPushOnStop = false
+	log := &mockLogger{}
+	runner := NewRunner(cfg, log)
+
+	tmpDir, err := os.MkdirTemp("", "phantom-agent-git-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Initialize a git repo
+	initGit(t, tmpDir)
+
+	overlay := &api.Overlay{
+		Name:       "git-test",
+		MountPoint: tmpDir,
+		Branch:     "test-branch",
+	}
+
+	// No changes — should be a no-op
+	runner.handleGitOperations(context.Background(), overlay, true)
+
+	// Create a change
+	os.WriteFile(filepath.Join(tmpDir, "new-file.txt"), []byte("change"), 0644)
+
+	// Now there are changes — should commit
+	runner.handleGitOperations(context.Background(), overlay, true)
+}
+
+func initGit(t *testing.T, dir string) {
+	t.Helper()
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@test.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "init"},
+	}
+	for _, args := range cmds {
+		cmd := exec.CommandContext(context.Background(), args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git command %v failed: %v\n%s", args, err, out)
+		}
 	}
 }

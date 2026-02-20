@@ -335,3 +335,132 @@ func TestConfigFilePermissions(t *testing.T) {
 		t.Errorf("expected file permissions 0600, got %v", info.Mode().Perm())
 	}
 }
+
+
+func TestGetLogsPath(t *testing.T) {
+	cfg := DefaultConfig()
+	logsPath := cfg.GetLogsPath()
+	if logsPath == "" {
+		t.Error("expected non-empty logs path")
+	}
+
+	// Test with custom path
+	cfg.Paths.Logs = "/custom/logs"
+	if cfg.GetLogsPath() != "/custom/logs" {
+		t.Errorf("expected /custom/logs, got %s", cfg.GetLogsPath())
+	}
+}
+
+func TestGetSnapshotsPath(t *testing.T) {
+	cfg := DefaultConfig()
+	snapsPath := cfg.GetSnapshotsPath()
+	if snapsPath == "" {
+		t.Error("expected non-empty snapshots path")
+	}
+
+	// Test with custom path
+	cfg.Paths.Snapshots = "/custom/snapshots"
+	if cfg.GetSnapshotsPath() != "/custom/snapshots" {
+		t.Errorf("expected /custom/snapshots, got %s", cfg.GetSnapshotsPath())
+	}
+}
+
+func TestGetOverlaysPath_Custom(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Paths.Overlays = "/custom/overlays"
+	if cfg.GetOverlaysPath() != "/custom/overlays" {
+		t.Errorf("expected /custom/overlays, got %s", cfg.GetOverlaysPath())
+	}
+}
+
+func TestGetMountPath_Custom(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Paths.Mounts = "/custom/mounts"
+	if cfg.GetMountPath() != "/custom/mounts" {
+		t.Errorf("expected /custom/mounts, got %s", cfg.GetMountPath())
+	}
+}
+
+func TestLoadInvalidYAML(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-config-invalid-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	os.WriteFile(configPath, []byte("{{invalid yaml"), 0644)
+
+	_, err = Load(configPath)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestLoadInvalidConfig(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-config-badval-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	// Valid YAML but invalid config (bad log level)
+	os.WriteFile(configPath, []byte("logging:\n  level: invalid_level\n"), 0644)
+
+	_, err = Load(configPath)
+	if err == nil {
+		t.Error("expected error for invalid log level")
+	}
+}
+
+func TestSaveCreatesDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-config-savedir-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := DefaultConfig()
+	configPath := filepath.Join(tmpDir, "subdir", "config.yaml")
+	err = cfg.Save(configPath)
+	if err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Error("config file should exist")
+	}
+}
+
+func TestConfigPathsExpansion(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "phantom-config-expand-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	content := `state_dir: "~/phantom-test"
+paths:
+  overlays: "~/phantom-test/overlays"
+  mounts: "~/phantom-test/mounts"
+  logs: "~/phantom-test/logs"
+  snapshots: "~/phantom-test/snapshots"
+logging:
+  level: info
+  file: "~/phantom-test/phantom.log"
+`
+	os.WriteFile(configPath, []byte(content), 0644)
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	expected := filepath.Join(homeDir, "phantom-test")
+	if cfg.StateDir != expected {
+		t.Errorf("StateDir = %q, want %q", cfg.StateDir, expected)
+	}
+}
