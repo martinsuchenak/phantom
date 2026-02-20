@@ -330,6 +330,9 @@ func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBase
 		result.Error = err.Error()
 	}
 
+	// Execute post-run hooks
+	ExecuteHooks(def.Name, ovl.MountPoint, absBaseDir, ovl.Branch, def.Agent, def.Task, exitCode)
+
 	return result
 }
 

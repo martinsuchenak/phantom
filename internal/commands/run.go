@@ -248,6 +248,9 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 		log.Error("Agent execution failed: %v", err)
 	}
 
+	// Execute post-run hooks
+	ExecuteHooks(name, ovl.MountPoint, absBaseDir, ovl.Branch, agentCmd, task, exitCode)
+
 	// Cleanup if requested
 	if doCleanup {
 		log.Debug("Cleaning up overlay")

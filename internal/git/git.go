@@ -194,3 +194,17 @@ func (g *Operations) MergeBranch(ctx context.Context, repoPath, branchName strin
 	}
 	return nil
 }
+// Rebase rebases the current branch onto the specified branch
+func (g *Operations) Rebase(ctx context.Context, repoPath, ontoBranch string) error {
+	_, err := g.runGit(ctx, repoPath, "rebase", ontoBranch)
+	if err != nil {
+		return api.NewError(api.ErrGitFailed, fmt.Sprintf("failed to rebase onto %s", ontoBranch), err)
+	}
+	return nil
+}
+
+// RebaseAbort aborts an in-progress rebase
+func (g *Operations) RebaseAbort(ctx context.Context, repoPath string) error {
+	_, err := g.runGit(ctx, repoPath, "rebase", "--abort")
+	return err
+}

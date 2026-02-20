@@ -279,6 +279,111 @@ steps:
 
 Each step runs in the same overlay, so later steps see all changes from earlier steps. The chain stops on the first failure unless `--continue-on-error` is set. A summary table is printed at the end.
 
+### Watch File Changes
+
+```bash
+# Watch an overlay for file changes in real time
+phantom watch feature-a
+
+# Custom poll interval (seconds)
+phantom watch feature-a --interval 1
+
+# JSON output (for piping)
+phantom watch feature-a --format json
+```
+
+Options:
+- `--interval, -i` - Poll interval in seconds (default: 2)
+- `--format` - Output format: `simple` (default), `json`
+
+Output symbols: `+` added, `~` modified, `-` deleted, `⊘` reset (file removed from overlay). The overlay must be mounted. Press Ctrl+C to stop.
+
+### Replay Last Agent Run
+
+```bash
+# Re-run the last agent command in an overlay
+phantom replay feature-a
+
+# Preview what would be run
+phantom replay feature-a --dry-run
+
+# With options
+phantom replay feature-a --timeout 30 --cleanup --push
+```
+
+Options:
+- `--dry-run` - Show what would be run without executing
+- `--timeout` - Timeout in minutes (default: from config)
+- `--cleanup` - Cleanup overlay after completion
+- `--push` - Push branch to remote on completion
+
+Reads the agent command and task from the overlay's log file header and re-runs it. Useful for quick retries without remembering the exact flags.
+
+### Post-Run Hooks
+
+```bash
+# List configured hooks
+phantom hook list
+
+# Add a hook
+phantom hook add --name lint --on success --command "npm run lint --fix"
+phantom hook add --name notify --on failure --command "echo 'Failed: $OVERLAY_NAME' >> ~/failures.log"
+phantom hook add --name format --on always --command "go fmt ./..."
+
+# Remove a hook
+phantom hook remove lint
+
+# Create example hooks.yaml
+phantom hook init
+```
+
+Hooks run automatically after any agent finishes (`phantom run`, `run-all`, `run-chain`). Configure when they fire:
+- `success` - only when agent exits 0
+- `failure` - only when agent exits non-zero
+- `always` - regardless of exit code
+
+Hooks execute in the overlay mount point with environment variables: `OVERLAY_NAME`, `OVERLAY_PATH`, `OVERLAY_BASE`, `OVERLAY_BRANCH`, `OVERLAY_EXIT_CODE`, `OVERLAY_AGENT`, `OVERLAY_TASK`.
+
+Hooks are stored in `~/.phantom/hooks.yaml`.
+
+### Merge Overlay Changes
+
+```bash
+# Merge changes from one overlay into another
+phantom merge feature-auth feature-combined
+
+# Preview what would be merged
+phantom merge feature-auth feature-combined --dry-run
+
+# Force merge even with conflicts (overwrites target files)
+phantom merge feature-auth feature-combined --force
+```
+
+Options:
+- `--dry-run` - Show merge plan without making changes
+- `--force, -f` - Overwrite conflicting files in target
+
+Copies file changes from the source overlay's upper directory into the target overlay. Detects conflicts (files changed in both overlays) before merging. Pairs well with `phantom conflicts` for pre-merge checks and `phantom run-all` for combining parallel agent work.
+
+### Sync Overlay with Base
+
+```bash
+# Sync overlay with latest base directory changes (git)
+phantom sync feature-a
+
+# Preview what would happen
+phantom sync feature-a --dry-run
+
+# Stash uncommitted changes before sync
+phantom sync feature-a --stash
+```
+
+Options:
+- `--dry-run` - Show what would happen without making changes
+- `--stash` - Stash uncommitted overlay changes before sync, restore after
+
+For git repos, this fetches latest changes and rebases the overlay branch onto the updated base branch. For non-git directories, the overlay is remounted to refresh the base layer. Useful when the base repo has moved forward (e.g. someone merged a PR) and you want the overlay to pick up those changes without recreating it.
+
 ### Show Changes in an Overlay
 
 ```bash
@@ -621,6 +726,12 @@ The `.env` file supports:
 | `phantom run <base-dir> --agent <cmd>` | Run agent in overlay context |
 | `phantom run-all <base-dir>` | Run multiple agents in parallel |
 | `phantom run-chain <base-dir>` | Run agents sequentially on one overlay |
+| `phantom watch <name>` | Watch file changes in real time |
+| `phantom replay <name>` | Re-run the last agent command |
+| `phantom hook list` | List post-run hooks |
+| `phantom hook add` | Add a post-run hook |
+| `phantom merge <src> <dst>` | Merge changes between overlays |
+| `phantom sync <name>` | Sync overlay with base directory changes |
 | `phantom init` | Initialize default configuration |
 | `phantom health` | Check health of overlays and system |
 | `phantom export <name>` | Export overlay changes as diff or tarball |

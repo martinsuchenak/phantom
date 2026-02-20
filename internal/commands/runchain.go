@@ -354,6 +354,9 @@ func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBase
 		result.Error = err.Error()
 	}
 
+	// Execute post-run hooks
+	ExecuteHooks(step.Name, ovl.MountPoint, absBaseDir, ovl.Branch, step.Agent, step.Task, exitCode)
+
 	return result
 }
 
