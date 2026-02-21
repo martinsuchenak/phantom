@@ -69,6 +69,11 @@ func processStop(ctx context.Context, name string, doCleanup, doPush, force bool
 		return err
 	}
 
+	// Check if locked
+	if ovl.Locked && doCleanup && !force {
+		return fmt.Errorf("overlay %q is locked — use 'phantom unlock %s' first, or --force to override", name, name)
+	}
+
 	// Create the overlay manager
 	mgr, err := createOverlayManager()
 	if err != nil {

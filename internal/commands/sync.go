@@ -70,6 +70,20 @@ func doSync(ctx context.Context, cmd *cli.Command) error {
 	gitOps := git.NewOperations()
 	isGit, _ := gitOps.IsGitRepo(ctx, ovl.BaseDir)
 
+	// Check pin divergence
+	if diverged, currentHash, err := CheckPinDivergence(ctx, ovl); err == nil && diverged {
+		short := ovl.PinnedCommit
+		if len(short) > 10 {
+			short = short[:10]
+		}
+		currentShort := currentHash
+		if len(currentShort) > 10 {
+			currentShort = currentShort[:10]
+		}
+		log.Warn("Base has diverged from pinned commit %s (now at %s)", short, currentShort)
+		log.Warn("Sync will update past the pin. Use 'phantom unpin %s' to clear, or 'phantom pin %s' to re-pin after sync.", name, name)
+	}
+
 	if isGit {
 		return syncGit(ctx, ovl, mgr, gitOps, dryRun, doStash)
 	}

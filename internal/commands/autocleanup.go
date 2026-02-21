@@ -42,6 +42,11 @@ func runAutoCleanup() {
 			continue
 		}
 
+		// Skip locked overlays
+		if ovl.Locked {
+			continue
+		}
+
 		// Only auto-clean expired overlays
 		if now.Sub(ovl.CreatedAt) <= maxAge {
 			continue

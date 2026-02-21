@@ -67,6 +67,12 @@ func processPrune(dryRun, force bool) error {
 			continue
 		}
 
+		// Skip locked overlays
+		if ovl.Locked {
+			log.Debug("Skipping locked overlay %q", ovl.Name)
+			continue
+		}
+
 		mounted, _ := mgr.IsMounted(ovl)
 		age := now.Sub(ovl.CreatedAt)
 		expired := maxAge > 0 && age > maxAge

@@ -29,24 +29,26 @@ func NewInspectCommand() *cli.Command {
 }
 
 type inspectOutput struct {
-	Name       string `json:"name"`
-	BaseDir    string `json:"base_dir"`
-	MountPoint string `json:"mount_point"`
-	UpperDir   string `json:"upper_dir"`
-	Branch     string `json:"branch"`
-	Persistent bool   `json:"persistent"`
-	CreatedAt  string `json:"created_at"`
-	Mounted    bool   `json:"mounted"`
-	Uptime     string `json:"uptime"`
-	SizeBytes  int64  `json:"size_bytes"`
-	PID        int    `json:"pid,omitempty"`
-	FilesAdded int    `json:"files_added"`
-	FilesMod   int    `json:"files_modified"`
-	FilesDel   int    `json:"files_deleted"`
-	GitBranch  string `json:"git_branch,omitempty"`
-	GitDirty   bool   `json:"git_dirty,omitempty"`
-	Snapshots  int    `json:"snapshots"`
-	HasLog     bool   `json:"has_log"`
+	Name         string `json:"name"`
+	BaseDir      string `json:"base_dir"`
+	MountPoint   string `json:"mount_point"`
+	UpperDir     string `json:"upper_dir"`
+	Branch       string `json:"branch"`
+	Persistent   bool   `json:"persistent"`
+	Locked       bool   `json:"locked"`
+	PinnedCommit string `json:"pinned_commit,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	Mounted      bool   `json:"mounted"`
+	Uptime       string `json:"uptime"`
+	SizeBytes    int64  `json:"size_bytes"`
+	PID          int    `json:"pid,omitempty"`
+	FilesAdded   int    `json:"files_added"`
+	FilesMod     int    `json:"files_modified"`
+	FilesDel     int    `json:"files_deleted"`
+	GitBranch    string `json:"git_branch,omitempty"`
+	GitDirty     bool   `json:"git_dirty,omitempty"`
+	Snapshots    int    `json:"snapshots"`
+	HasLog       bool   `json:"has_log"`
 }
 
 func doInspect(ctx context.Context, cmd *cli.Command) error {
@@ -110,13 +112,15 @@ func doInspect(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	out := inspectOutput{
-		Name:       ovl.Name,
-		BaseDir:    ovl.BaseDir,
-		MountPoint: ovl.MountPoint,
-		UpperDir:   ovl.UpperDir,
-		Branch:     ovl.Branch,
-		Persistent: ovl.Persistent,
-		CreatedAt:  ovl.CreatedAt.Format("2006-01-02 15:04:05"),
+		Name:         ovl.Name,
+		BaseDir:      ovl.BaseDir,
+		MountPoint:   ovl.MountPoint,
+		UpperDir:     ovl.UpperDir,
+		Branch:       ovl.Branch,
+		Persistent:   ovl.Persistent,
+		Locked:       ovl.Locked,
+		PinnedCommit: ovl.PinnedCommit,
+		CreatedAt:    ovl.CreatedAt.Format("2006-01-02 15:04:05"),
 		PID:        ovl.PID,
 		FilesAdded: added,
 		FilesMod:   modified,
@@ -144,6 +148,14 @@ func doInspect(ctx context.Context, cmd *cli.Command) error {
 	fmt.Printf("Upper Dir:    %s\n", out.UpperDir)
 	fmt.Printf("Branch:       %s\n", out.Branch)
 	fmt.Printf("Persistent:   %v\n", out.Persistent)
+	fmt.Printf("Locked:       %v\n", out.Locked)
+	if out.PinnedCommit != "" {
+		pinShort := out.PinnedCommit
+		if len(pinShort) > 10 {
+			pinShort = pinShort[:10]
+		}
+		fmt.Printf("Pinned:       %s\n", pinShort)
+	}
 	fmt.Printf("Created:      %s\n", out.CreatedAt)
 	fmt.Printf("Mounted:      %v\n", out.Mounted)
 	fmt.Printf("Uptime:       %s\n", out.Uptime)

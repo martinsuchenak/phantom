@@ -384,6 +384,51 @@ Options:
 
 For git repos, this fetches latest changes and rebases the overlay branch onto the updated base branch. For non-git directories, the overlay is remounted to refresh the base layer. Useful when the base repo has moved forward (e.g. someone merged a PR) and you want the overlay to pick up those changes without recreating it.
 
+### Lock / Unlock an Overlay
+
+```bash
+# Lock an overlay to prevent accidental cleanup
+phantom lock feature-a
+
+# Unlock it when you're done
+phantom unlock feature-a
+```
+
+Locked overlays are protected from `stop --cleanup`, `prune`, `gc`, and auto-cleanup. Unlike `--persistent` (set at creation time), lock/unlock can be toggled at any time. Use it for long-running experiments or overlays with important uncommitted work.
+
+### Compare Two Overlays
+
+```bash
+# Side-by-side comparison of what each overlay changed
+phantom compare feature-auth feature-api
+
+# JSON output
+phantom compare feature-auth feature-api --format json
+```
+
+Options:
+- `--format` - Output format: `table` (default), `json`
+
+Shows which files each overlay modified, added, or deleted. Files changed in both overlays are flagged — "identical change" if same status and size, "⚠ diverged" if different. Useful for reviewing which agent did a better job before applying, or for pre-merge analysis alongside `phantom conflicts`.
+
+### Pin / Unpin an Overlay
+
+```bash
+# Pin overlay to the current base commit
+phantom pin feature-a
+
+# Pin to a specific commit
+phantom pin feature-a --commit abc123
+
+# Remove the pin
+phantom unpin feature-a
+```
+
+Options:
+- `--commit` - Pin to a specific commit hash (default: current HEAD)
+
+Records the base directory's current commit hash. When the base moves forward, commands like `sync` will warn that the base has diverged from the pinned commit. This makes `sync` an explicit, informed choice rather than a silent base change. Pin status is shown in `phantom inspect`.
+
 ### Show Changes in an Overlay
 
 ```bash
@@ -732,6 +777,11 @@ The `.env` file supports:
 | `phantom hook add` | Add a post-run hook |
 | `phantom merge <src> <dst>` | Merge changes between overlays |
 | `phantom sync <name>` | Sync overlay with base directory changes |
+| `phantom lock <name>` | Lock overlay from cleanup/prune |
+| `phantom unlock <name>` | Unlock a locked overlay |
+| `phantom compare <a> <b>` | Compare changes between two overlays |
+| `phantom pin <name>` | Pin overlay to a base commit |
+| `phantom unpin <name>` | Remove commit pin |
 | `phantom init` | Initialize default configuration |
 | `phantom health` | Check health of overlays and system |
 | `phantom export <name>` | Export overlay changes as diff or tarball |
@@ -891,6 +941,7 @@ Phantom implements several security measures:
 | `PERMISSION_DENIED` | Insufficient permissions |
 | `INVALID_CONFIG` | Configuration validation failed |
 | `OVERLAY_NOT_MOUNTED` | Overlay exists but is not mounted |
+| `OVERLAY_LOCKED` | Overlay is locked and cannot be cleaned up |
 
 ## Development
 
