@@ -500,11 +500,40 @@ phantom config show
 
 ### `phantom template`
 
+Browse and generate config files from built-in agent templates.
+
 ```bash
+# List all templates
 phantom template list
+
+# Show details and example YAML for a template
 phantom template show claude
+
+# Generate agents.yaml for run-all (parallel)
 phantom template generate --agents claude,aider,gemini -o agents.yaml
+
+# Generate chain.yaml for run-chain (sequential pipeline)
+phantom template generate --chain --agents claude,aider,gemini -o chain.yaml
+
+# Generate chain.yaml with pre-filled name and branch
+phantom template generate --chain --agents claude,aider --name auth-pipeline --branch feature/auth -o chain.yaml
 ```
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | List all built-in templates with agent command and task mode |
+| `show <name>` | Show template details and an example agents.yaml entry |
+| `generate` | Generate a config file from one or more templates |
+
+**`generate` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--agents` | Comma-separated template names, e.g. `claude,aider,gemini` (required) |
+| `--chain, -c` | Output `chain.yaml` format for `run-chain` (default: `agents.yaml` for `run-all`) |
+| `--name, -n` | Pipeline name (chain mode only, default: `my-pipeline`) |
+| `--branch, -b` | Git branch (chain mode only) |
+| `--output, -o` | Write to file instead of stdout |
 
 Built-in templates: `claude`, `claude-interactive`, `gemini`, `gemini-arg`, `aider`, `vibe`, `copilot`, `gh-copilot`, `codex`, `opencode`, `opencode-stdin`, `qwen-code`, `qwen-code-stdin`, `kiro`.
 
