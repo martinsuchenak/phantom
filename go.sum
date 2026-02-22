@@ -1,7 +1,7 @@
 github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=
 github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
-github.com/paularlott/cli v0.7.3 h1:FN8AFyqQhj9IcT4MVJXZKLCnQIrO4YjJtmReDHKLiXs=
-github.com/paularlott/cli v0.7.3/go.mod h1:K5qUSWj48JeMIAqztG6WTg1Q4ip4luQgYokD7z+tKPs=
+github.com/paularlott/cli v0.7.6-0.20260222142126-8dbf84ebf32e h1:m/eD8r3V0oFp4x6XI6pA7qSQKD1T3zqRVs/z+hrOeNw=
+github.com/paularlott/cli v0.7.6-0.20260222142126-8dbf84ebf32e/go.mod h1:pN1JVlAw7EDUVf4mKRUP708jzXKLsb1wBfHgdhDQbfA=
 github.com/paularlott/logger v0.3.0 h1:QwVUoxmlEFkfHI25y5dn56OJvK4Bpe3OvoJu4GZM7ng=
 github.com/paularlott/logger v0.3.0/go.mod h1:vjAOY1vUvYigmJxxQ0eMclryIjDS6VWNK6FprtTMce0=
 golang.org/x/sys v0.41.0 h1:Ivj+2Cp/ylzLiEU89QhWblYnOE9zerudt9Ftecq2C6k=

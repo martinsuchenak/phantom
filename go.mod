@@ -3,7 +3,7 @@ module github.com/martinsuchenak/phantom
 go 1.26.0
 
 require (
-	github.com/paularlott/cli v0.7.3
+	github.com/paularlott/cli v0.7.6-0.20260222142126-8dbf84ebf32e
 	github.com/paularlott/logger v0.3.0
 	golang.org/x/sys v0.41.0
 	gopkg.in/yaml.v3 v3.0.1

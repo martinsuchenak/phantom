@@ -505,10 +505,48 @@ Built-in templates: `claude`, `claude-interactive`, `gemini`, `gemini-arg`, `aid
 
 ### `phantom completion <shell>`
 
+Generate shell completion scripts. Supported shells: `bash`, `zsh`, `fish`, `powershell`.
+
+**Bash** — load for current session:
+
 ```bash
 source <(phantom completion bash)
+```
+
+Load permanently (execute once):
+
+```bash
+phantom completion bash > ~/.bash_completion
+```
+
+**Zsh** — load for current session:
+
+```zsh
 source <(phantom completion zsh)
-phantom completion fish | source
+```
+
+Load permanently via fpath (execute once, then restart your shell):
+
+```zsh
+phantom completion zsh > "${fpath[1]}/_phantom"
+```
+
+If completions still don't appear, ensure your `~/.zshrc` contains:
+
+```zsh
+autoload -U compinit
+compinit
+```
+
+**Fish**:
+
+```fish
+phantom completion fish > ~/.config/fish/completions/phantom.fish
+```
+
+**PowerShell**:
+
+```powershell
 phantom completion powershell | Out-String | Invoke-Expression
 ```
 

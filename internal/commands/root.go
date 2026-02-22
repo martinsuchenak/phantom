@@ -12,13 +12,13 @@ import (
 )
 
 var (
-	cfg        *config.Config
-	cfgPath    string
-	verbose    bool
-	log        logger.Logger
-	version    = "0.1.0"
-	commit     = ""
-	date       = ""
+	cfg     *config.Config
+	cfgPath string
+	verbose bool
+	log     logger.Logger
+	version = "0.1.0"
+	commit  = ""
+	date    = ""
 )
 
 // SetVersion sets version info from main
@@ -53,11 +53,11 @@ func Execute() {
 				DefaultValue: "",
 			},
 			&cli.BoolFlag{
-				Name:         "verbose",
-				Aliases:      []string{"V"},
-				Usage:        "Verbose output",
-				AssignTo:     &verbose,
-				Global:       true,
+				Name:     "verbose",
+				Aliases:  []string{"V"},
+				Usage:    "Verbose output",
+				AssignTo: &verbose,
+				Global:   true,
 			},
 		},
 		Commands: []*cli.Command{
