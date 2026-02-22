@@ -501,7 +501,7 @@ phantom template show claude
 phantom template generate --agents claude,aider,gemini -o agents.yaml
 ```
 
-Built-in templates: `claude`, `claude-interactive`, `gemini`, `gemini-arg`, `aider`, `vibe`, `copilot`, `codex`.
+Built-in templates: `claude`, `claude-interactive`, `gemini`, `gemini-arg`, `aider`, `vibe`, `copilot`, `gh-copilot`, `codex`, `opencode`, `opencode-stdin`, `qwen-code`, `qwen-code-stdin`, `kiro`.
 
 ### `phantom completion <shell>`
 

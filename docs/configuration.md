@@ -182,8 +182,14 @@ phantom template list
 | `gemini-arg` | `gemini "{task}"` | placeholder |
 | `aider` | `aider --message "{task}"` | placeholder |
 | `vibe` | `vibe --prompt "{task}"` | placeholder |
-| `copilot` | `gh copilot suggest "{task}"` | placeholder |
+| `copilot` | `copilot --prompt "{task}" --allow-all-tools` | placeholder |
+| `gh-copilot` | `gh copilot suggest "{task}"` | placeholder |
 | `codex` | `codex "{task}"` | placeholder |
+| `opencode` | `opencode run "{task}"` | placeholder |
+| `opencode-stdin` | `opencode run --prompt` | stdin |
+| `qwen-code` | `qwen --prompt "{task}"` | placeholder |
+| `qwen-code-stdin` | `qwen` | stdin |
+| `kiro` | `kiro chat --no-interactive --trust-all-tools` | stdin |
 
 ### Task Delivery Modes
 

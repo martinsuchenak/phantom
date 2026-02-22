@@ -21,8 +21,8 @@ type agentTemplate struct {
 var builtinTemplates = []agentTemplate{
 	{
 		Name:        "claude",
-		Description: "Claude Code (Anthropic) — headless via --print, task piped to stdin",
-		Agent:       "claude --print",
+		Description: "Claude Code (Anthropic) — headless, skip all permission prompts",
+		Agent:       "claude --print --dangerously-skip-permissions",
 		TaskMode:    "stdin",
 	},
 	{
@@ -33,20 +33,20 @@ var builtinTemplates = []agentTemplate{
 	},
 	{
 		Name:        "gemini",
-		Description: "Gemini CLI (Google) — headless via non-TTY detection, task piped to stdin",
-		Agent:       "gemini",
+		Description: "Gemini CLI (Google) — headless, auto-approve all tools via --yolo",
+		Agent:       "gemini --yolo",
 		TaskMode:    "stdin",
 	},
 	{
 		Name:        "gemini-arg",
-		Description: "Gemini CLI — task as positional argument",
-		Agent:       `gemini "{task}"`,
+		Description: "Gemini CLI — headless with task as argument, auto-approve all tools",
+		Agent:       `gemini --yolo "{task}"`,
 		TaskMode:    "placeholder",
 	},
 	{
 		Name:        "aider",
-		Description: "Aider — task passed via --message flag",
-		Agent:       `aider --message "{task}"`,
+		Description: "Aider — headless, auto-approve all changes via --yes-always",
+		Agent:       `aider --yes-always --message "{task}"`,
 		TaskMode:    "placeholder",
 	},
 	{
@@ -57,15 +57,51 @@ var builtinTemplates = []agentTemplate{
 	},
 	{
 		Name:        "copilot",
-		Description: "GitHub Copilot CLI — task as argument",
+		Description: "GitHub Copilot CLI — non-interactive, all tools allowed",
+		Agent:       `copilot --prompt "{task}" --allow-all-tools`,
+		TaskMode:    "placeholder",
+	},
+	{
+		Name:        "gh-copilot",
+		Description: "GitHub Copilot CLI extension (gh copilot suggest) — task as argument",
 		Agent:       `gh copilot suggest "{task}"`,
 		TaskMode:    "placeholder",
 	},
 	{
 		Name:        "codex",
-		Description: "OpenAI Codex CLI — task as argument",
-		Agent:       `codex "{task}"`,
+		Description: "OpenAI Codex CLI — headless, full autonomy via --full-auto",
+		Agent:       `codex --full-auto "{task}"`,
 		TaskMode:    "placeholder",
+	},
+	{
+		Name:        "opencode",
+		Description: "OpenCode — non-interactive run mode, all tools auto-approved, quiet output",
+		Agent:       `opencode run -q "{task}"`,
+		TaskMode:    "placeholder",
+	},
+	{
+		Name:        "opencode-stdin",
+		Description: "OpenCode — non-interactive run mode, task piped via --prompt flag",
+		Agent:       "opencode run -q --prompt",
+		TaskMode:    "stdin",
+	},
+	{
+		Name:        "qwen-code",
+		Description: "Qwen Code CLI (Alibaba) — headless, auto-approve all tools via --yolo",
+		Agent:       `qwen --yolo --prompt "{task}"`,
+		TaskMode:    "placeholder",
+	},
+	{
+		Name:        "qwen-code-stdin",
+		Description: "Qwen Code CLI — headless, all tools auto-approved, task piped to stdin",
+		Agent:       "qwen --yolo",
+		TaskMode:    "stdin",
+	},
+	{
+		Name:        "kiro",
+		Description: "Kiro CLI — non-interactive chat, all tools trusted, task piped to stdin",
+		Agent:       "kiro chat --no-interactive --trust-all-tools",
+		TaskMode:    "stdin",
 	},
 }
 

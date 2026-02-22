@@ -46,8 +46,8 @@ func TestDoTemplateShow(t *testing.T) {
 	if tmpl == nil {
 		t.Fatal("expected to find 'claude' template")
 	}
-	if tmpl.Agent != "claude --print" {
-		t.Errorf("expected agent 'claude --print', got %q", tmpl.Agent)
+	if !strings.HasPrefix(tmpl.Agent, "claude --print") {
+		t.Errorf("expected agent to start with 'claude --print', got %q", tmpl.Agent)
 	}
 	if tmpl.TaskMode != "stdin" {
 		t.Errorf("expected task_mode 'stdin', got %q", tmpl.TaskMode)
