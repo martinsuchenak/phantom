@@ -4,6 +4,8 @@ Global flags available on all commands:
 
 - `--config, -c` — Config file path (default: `~/.phantom/config.yaml`)
 - `--verbose, -V` — Verbose output
+- `--version, -v` — Print version information
+- `--help, -h` — Show help for a command
 
 ---
 

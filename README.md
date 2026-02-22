@@ -94,12 +94,12 @@ make install      # -> /usr/local/bin/phantom
 | `list` / `status` / `inspect` | View overlay state |
 | `run` / `run-all` / `run-chain` | Run agents (single, parallel, sequential) |
 | `diff` / `compare` / `conflicts` | View and compare changes |
-| `commit` / `apply` / `merge` | Commit, apply to base, merge between overlays |
+| `commit` / `apply` / `merge` / `sync` | Commit, apply to base, merge, sync with base |
 | `watch` / `logs` / `replay` | Monitor and re-run agents |
 | `hook` | Post-run automation (lint, test, notify) |
 | `snapshot` / `export` / `clone` | Save, export, duplicate overlays |
 | `lock` / `unlock` / `pin` / `unpin` | Protect overlays from cleanup and base drift |
-| `prune` / `gc` / `health` | Maintenance and diagnostics |
+| `prune` / `gc` / `health` / `rename` | Maintenance, diagnostics, and renaming |
 | `config` / `init` / `template` | Configuration and scaffolding |
 | `completion` | Shell completion (bash, zsh, fish, powershell) |
 
