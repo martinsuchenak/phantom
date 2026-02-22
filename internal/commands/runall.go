@@ -271,7 +271,8 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 
 	wg.Wait()
 
-	// Phase 3: Cleanup if requested
+	// Phase 3: Cleanup if requested, otherwise clear stale FUSE PIDs so that
+	// `phantom health` does not raise false dead_pid alarms after runs complete.
 	if doCleanup {
 		for _, ac := range agentContexts {
 			log.Debug("Cleaning up overlay %q", ac.def.Name)
@@ -279,6 +280,15 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 				log.Warn("Failed to cleanup %q: %v", ac.def.Name, err)
 			}
 			store.Delete(ac.def.Name)
+		}
+	} else {
+		for _, ac := range agentContexts {
+			if ac.ovl.PID > 0 {
+				ac.ovl.PID = 0
+				if err := store.Save(ac.ovl); err != nil {
+					log.Warn("Failed to update state for %q: %v", ac.def.Name, err)
+				}
+			}
 		}
 	}
 

@@ -158,7 +158,7 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 			return 0, err
 		}
 		log.Debug("Using existing overlay (UseFuse=%v, MountPoint=%s)", ovl.UseFuse, ovl.MountPoint)
-		
+
 		// Check if mounted, if not try to mount it
 		mounted, err := mgr.IsMounted(ovl)
 		if err != nil {
@@ -251,13 +251,19 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 	// Execute post-run hooks
 	ExecuteHooks(name, ovl.MountPoint, absBaseDir, ovl.Branch, agentCmd, task, exitCode)
 
-	// Cleanup if requested
+	// Cleanup if requested, otherwise clear the stale FUSE PID from state so
+	// that `phantom health` does not raise a false dead_pid alarm.
 	if doCleanup {
 		log.Debug("Cleaning up overlay")
 		if err := mgr.Cleanup(ovl); err != nil {
 			log.Error("Failed to cleanup overlay: %v", err)
 		}
 		store.Delete(name)
+	} else if ovl.PID > 0 {
+		ovl.PID = 0
+		if err := store.Save(ovl); err != nil {
+			log.Warn("Failed to update overlay state after run: %v", err)
+		}
 	}
 
 	return exitCode, err

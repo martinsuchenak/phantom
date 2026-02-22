@@ -20,8 +20,8 @@ import (
 
 // chainConfig is the YAML config for sequential agent chaining
 type chainConfig struct {
-	Name   string     `yaml:"name"`
-	Branch string     `yaml:"branch"`
+	Name   string      `yaml:"name"`
+	Branch string      `yaml:"branch"`
 	Steps  []chainStep `yaml:"steps"`
 }
 
@@ -285,6 +285,18 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 		}
 		if err := gitOps.PushBranch(ctx, ovl.MountPoint, ovl.Branch, false); err != nil {
 			log.Warn("Failed to push branch: %v", err)
+		}
+	}
+
+	// If not cleaning up, clear the stale FUSE PID from state so that
+	// `phantom health` does not flag the overlay as unhealthy after the
+	// run completes. The unionfs-fuse process exits once the mount is no
+	// longer actively used; keeping the old PID around causes a false
+	// dead_pid alarm.
+	if !doCleanup && ovl.PID > 0 {
+		ovl.PID = 0
+		if err := store.Save(ovl); err != nil {
+			log.Warn("Failed to update overlay state after chain completion: %v", err)
 		}
 	}
 
