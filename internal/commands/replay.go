@@ -89,7 +89,7 @@ func doReplay(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Re-run using processRun (reuses existing overlay)
-	exitCode, err := processRun(ctx, info.Agent, info.Task, ovl.BaseDir, name, "", timeoutMinutes, doCleanup, doPush, false)
+	exitCode, err := processRun(ctx, info.Agent, info.Task, "", ovl.BaseDir, name, "", timeoutMinutes, doCleanup, doPush, false)
 	if err != nil {
 		return err
 	}

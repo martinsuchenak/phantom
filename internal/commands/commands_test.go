@@ -339,7 +339,7 @@ func TestRunCommand(t *testing.T) {
 	updateMockMount(t, mockBinDir, mountPoint)
 
 	// Call processRun
-	exitCode, err := processRun(context.Background(), "echo hello", "test-task", baseDir, "test-run", "", 1, true, false, false)
+	exitCode, err := processRun(context.Background(), "echo hello", "test-task", "", baseDir, "test-run", "", 1, true, false, false)
 	if err != nil {
 		t.Errorf("processRun failed: %v", err)
 	}

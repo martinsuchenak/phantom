@@ -93,7 +93,8 @@ phantom status feature-a --format json
 Run a single agent in an overlay context.
 
 ```bash
-phantom run ~/myproject --agent "claude --print" --task "implement auth"
+phantom run ~/myproject --agent "claude --print --dangerously-skip-permissions --model {model}" --task "implement auth"
+phantom run ~/myproject -a "aider --yes-always --model {model} --message '{task}'" -m gpt-4o
 phantom run ~/myproject -a "aider" -t "fix tests" -n fix-tests --timeout 30 --cleanup
 ```
 
@@ -101,6 +102,7 @@ phantom run ~/myproject -a "aider" -t "fix tests" -n fix-tests --timeout 30 --cl
 |------|-------------|
 | `--agent, -a` | Agent command to run (required) |
 | `--task, -t` | Task description (passed as `OVERLAY_TASK` env var) |
+| `--model, -m` | Model name — substituted as `{model}` in the agent command; also set as `OVERLAY_MODEL`. Optional. |
 | `--name, -n` | Overlay name (auto-generated if omitted) |
 | `--branch, -b` | Git branch name |
 | `--timeout` | Timeout in minutes (default: from config, max: 1440) |
@@ -117,6 +119,7 @@ Environment variables set for the agent:
 | `OVERLAY_BASE` | Original base directory |
 | `OVERLAY_BRANCH` | Git branch name |
 | `OVERLAY_TASK` | Task description |
+| `OVERLAY_MODEL` | Model name (empty string if `--model` was not passed) |
 | `OVERLAY_ENABLED` | Always `true` |
 
 ### `phantom run-all <base-dir>`
@@ -126,13 +129,14 @@ Run multiple agents in parallel, each in its own overlay.
 ```bash
 phantom run-all ~/myproject --config agents.yaml
 phantom run-all ~/myproject --agents "claude --print,aider,gemini"
-phantom run-all ~/myproject --config agents.yaml --timeout 30 --cleanup --push --format json
+phantom run-all ~/myproject --config agents.yaml --model claude-opus-4-5 --timeout 30 --cleanup
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--config, -c` | Path to agents YAML config file |
 | `--agents` | Comma-separated agent commands (simple mode) |
+| `--model, -m` | Model name — overrides `model:` in YAML for all agents. Optional. |
 | `--timeout` | Global timeout per agent in minutes |
 | `--cleanup` | Cleanup all overlays after completion |
 | `--push` | Push branches to remote |
@@ -147,7 +151,7 @@ Run agents sequentially on a single overlay. Each step builds on the previous on
 ```bash
 phantom run-chain ~/myproject --config chain.yaml
 phantom run-chain ~/myproject --steps "claude --print,aider,gemini"
-phantom run-chain ~/myproject --config chain.yaml --continue-on-error --cleanup
+phantom run-chain ~/myproject --config chain.yaml --model claude-sonnet-4 --continue-on-error --cleanup
 ```
 
 | Flag | Description |
@@ -156,6 +160,7 @@ phantom run-chain ~/myproject --config chain.yaml --continue-on-error --cleanup
 | `--steps` | Comma-separated agent commands (simple mode) |
 | `--name, -n` | Overlay name (auto-generated if omitted) |
 | `--branch, -b` | Git branch name |
+| `--model, -m` | Model name — overrides `model:` in YAML for all steps. Optional. |
 | `--timeout` | Global timeout per step in minutes |
 | `--cleanup` | Cleanup overlay after completion |
 | `--push` | Push branch to remote on completion |

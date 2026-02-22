@@ -16,7 +16,7 @@ type Overlay struct {
 	Locked       bool      `json:"locked,omitempty" yaml:"locked,omitempty"`
 	PinnedCommit string    `json:"pinned_commit,omitempty" yaml:"pinned_commit,omitempty"`
 	CreatedAt    time.Time `json:"created_at" yaml:"created_at"`
-	PID          int       `json:"pid,omitempty" yaml:"pid,omitempty"` // macOS unionfs / Linux fuse-overlayfs process
+	PID          int       `json:"pid,omitempty" yaml:"pid,omitempty"`           // macOS unionfs / Linux fuse-overlayfs process
 	UseFuse      bool      `json:"use_fuse,omitempty" yaml:"use_fuse,omitempty"` // Linux: whether fuse-overlayfs was used
 }
 
@@ -41,6 +41,7 @@ type CreateOptions struct {
 type RunOptions struct {
 	Agent     string
 	Task      string
+	Model     string // optional: substituted as {model} in agent command
 	BaseDir   string
 	Name      string
 	Timeout   time.Duration

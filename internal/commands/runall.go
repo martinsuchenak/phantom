@@ -54,6 +54,12 @@ func NewRunAllCommand() *cli.Command {
 				Usage:        "Summary output format (table, json)",
 				DefaultValue: "table",
 			},
+			&cli.StringFlag{
+				Name:    "model",
+				Aliases: []string{"m"},
+				Usage:   "Model to use (substituted as {model} in agent commands; overrides per-agent model)",
+				EnvVars: []string{"OVERLAY_MODEL"},
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -71,6 +77,7 @@ type agentDef struct {
 	Name    string `yaml:"name" json:"name"`
 	Agent   string `yaml:"agent" json:"agent"`
 	Task    string `yaml:"task" json:"task"`
+	Model   string `yaml:"model" json:"model"` // optional: substituted as {model} in agent command
 	Branch  string `yaml:"branch" json:"branch"`
 	Timeout int    `yaml:"timeout" json:"timeout"` // minutes, 0 = use global
 }
@@ -100,6 +107,7 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 	doCleanup := cmd.GetBool("cleanup")
 	doPush := cmd.GetBool("push")
 	format := cmd.GetString("format")
+	modelOverride := cmd.GetString("model")
 
 	if configPath == "" && agentsInline == "" {
 		return fmt.Errorf("either --config or --agents is required")
@@ -120,6 +128,13 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 
 	if len(agents) == 0 {
 		return fmt.Errorf("no agents defined")
+	}
+
+	// Apply CLI model override to all agents
+	if modelOverride != "" {
+		for i := range agents {
+			agents[i].Model = modelOverride
+		}
 	}
 
 	// If config specifies sequential mode, delegate to chain execution
@@ -324,6 +339,7 @@ func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBase
 	runOpts := &api.RunOptions{
 		Agent:     def.Agent,
 		Task:      def.Task,
+		Model:     def.Model,
 		BaseDir:   absBaseDir,
 		Name:      def.Name,
 		Timeout:   timeout,

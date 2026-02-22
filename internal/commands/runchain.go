@@ -30,6 +30,7 @@ type chainStep struct {
 	Name    string `yaml:"name" json:"name"`
 	Agent   string `yaml:"agent" json:"agent"`
 	Task    string `yaml:"task" json:"task"`
+	Model   string `yaml:"model" json:"model"`     // optional: substituted as {model} in agent command
 	Timeout int    `yaml:"timeout" json:"timeout"` // minutes, 0 = use global
 }
 
@@ -81,6 +82,12 @@ func NewRunChainCommand() *cli.Command {
 				Usage:        "Summary output format (table, json)",
 				DefaultValue: "table",
 			},
+			&cli.StringFlag{
+				Name:    "model",
+				Aliases: []string{"m"},
+				Usage:   "Model to use (substituted as {model} in step agent commands; overrides per-step model)",
+				EnvVars: []string{"OVERLAY_MODEL"},
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -104,6 +111,7 @@ func doRunChain(ctx context.Context, cmd *cli.Command) error {
 	doPush := cmd.GetBool("push")
 	continueOnError := cmd.GetBool("continue-on-error")
 	format := cmd.GetString("format")
+	modelOverride := cmd.GetString("model")
 
 	if configPath == "" && stepsInline == "" {
 		return fmt.Errorf("either --config or --steps is required")
@@ -138,6 +146,13 @@ func doRunChain(ctx context.Context, cmd *cli.Command) error {
 
 	if len(steps) == 0 {
 		return fmt.Errorf("no steps defined")
+	}
+
+	// Apply CLI model override to all steps
+	if modelOverride != "" {
+		for i := range steps {
+			steps[i].Model = modelOverride
+		}
 	}
 
 	return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, continueOnError, format)
@@ -351,6 +366,7 @@ func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBase
 	runOpts := &api.RunOptions{
 		Agent:    step.Agent,
 		Task:     step.Task,
+		Model:    step.Model,
 		BaseDir:  absBaseDir,
 		Name:     ovl.Name,
 		Timeout:  timeout,

@@ -53,6 +53,22 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	if opts.Task != "" {
 		agentCmd = strings.ReplaceAll(agentCmd, "{task}", opts.Task)
 	}
+	// Substitute {model} placeholder if provided; if not provided, remove any
+	// flag+placeholder pair (e.g. "--model {model}") so templates work without --model.
+	if opts.Model != "" {
+		agentCmd = strings.ReplaceAll(agentCmd, "{model}", opts.Model)
+	} else {
+		// Remove common flag patterns that wrap {model} so the command stays valid
+		agentCmd = strings.ReplaceAll(agentCmd, "--model {model}", "")
+		agentCmd = strings.ReplaceAll(agentCmd, "-m {model}", "")
+		// Remove bare placeholder in case it was used directly
+		agentCmd = strings.ReplaceAll(agentCmd, "{model}", "")
+		// Collapse any double spaces left behind
+		for strings.Contains(agentCmd, "  ") {
+			agentCmd = strings.ReplaceAll(agentCmd, "  ", " ")
+		}
+		agentCmd = strings.TrimSpace(agentCmd)
+	}
 	cmd := r.buildCommand(ctx, agentCmd)
 	cmd.Dir = ovl.MountPoint
 
@@ -198,6 +214,7 @@ func (r *Runner) buildEnv(ovl *api.Overlay, opts *api.RunOptions) []string {
 		fmt.Sprintf("OVERLAY_BASE=%s", ovl.BaseDir),
 		fmt.Sprintf("OVERLAY_BRANCH=%s", ovl.Branch),
 		fmt.Sprintf("OVERLAY_TASK=%s", opts.Task),
+		fmt.Sprintf("OVERLAY_MODEL=%s", opts.Model),
 	)
 
 	// Add configured agent env vars
@@ -240,6 +257,7 @@ func (r *Runner) handleGitOperations(ctx context.Context, ovl *api.Overlay, succ
 		}
 	}
 }
+
 // openLogFile creates or appends to the log file for an overlay's agent run
 func (r *Runner) openLogFile(name string) (*os.File, error) {
 	logsDir := r.cfg.GetLogsPath()

@@ -65,6 +65,12 @@ func NewRunCommand() *cli.Command {
 				Aliases: []string{"p"},
 				Usage:   "Keep overlay mounted after completion",
 			},
+			&cli.StringFlag{
+				Name:    "model",
+				Aliases: []string{"m"},
+				Usage:   "Model to use (substituted as {model} in agent command)",
+				EnvVars: []string{"OVERLAY_MODEL"},
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -81,6 +87,7 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 	baseDir := cmd.GetStringArg("base-dir")
 	agentCmd := cmd.GetString("agent")
 	task := cmd.GetString("task")
+	model := cmd.GetString("model")
 	name := cmd.GetString("name")
 	branch := cmd.GetString("branch")
 	timeoutMinutes := cmd.GetInt("timeout")
@@ -88,7 +95,7 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 	doPush := cmd.GetBool("push")
 	persist := cmd.GetBool("persist")
 
-	exitCode, err := processRun(ctx, agentCmd, task, baseDir, name, branch, timeoutMinutes, doCleanup, doPush, persist)
+	exitCode, err := processRun(ctx, agentCmd, task, model, baseDir, name, branch, timeoutMinutes, doCleanup, doPush, persist)
 	if err != nil {
 		return err
 	}
@@ -101,7 +108,7 @@ func doRun(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch string, timeoutMinutes int, doCleanup, doPush, persist bool) (int, error) {
+func processRun(ctx context.Context, agentCmd, task, model, baseDir, name, branch string, timeoutMinutes int, doCleanup, doPush, persist bool) (int, error) {
 	// Determine timeout: use flag if provided, otherwise use config default
 	var timeout time.Duration
 	if timeoutMinutes > 0 {
@@ -235,6 +242,7 @@ func processRun(ctx context.Context, agentCmd, task, baseDir, name, branch strin
 	runOpts := &api.RunOptions{
 		Agent:     agentCmd,
 		Task:      task,
+		Model:     model,
 		BaseDir:   absBaseDir,
 		Name:      name,
 		Timeout:   timeout,

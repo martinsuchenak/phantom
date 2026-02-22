@@ -15,39 +15,45 @@ type agentTemplate struct {
 	Name        string `json:"name" yaml:"name"`
 	Description string `json:"description" yaml:"description"`
 	Agent       string `json:"agent" yaml:"agent"`
-	TaskMode    string `json:"task_mode" yaml:"task_mode"` // "arg", "stdin", "placeholder"
+	TaskMode    string `json:"task_mode" yaml:"task_mode"`   // "arg", "stdin", "placeholder"
+	ModelHint   string `json:"model_hint" yaml:"model_hint"` // example model name for docs, e.g. "claude-opus-4-5"
 }
 
 var builtinTemplates = []agentTemplate{
 	{
 		Name:        "claude",
 		Description: "Claude Code (Anthropic) — headless, skip all permission prompts",
-		Agent:       "claude --print --dangerously-skip-permissions",
+		Agent:       "claude --print --dangerously-skip-permissions --model {model}",
 		TaskMode:    "stdin",
+		ModelHint:   "claude-opus-4-5",
 	},
 	{
 		Name:        "claude-interactive",
 		Description: "Claude Code — interactive mode with task as argument",
-		Agent:       `claude "{task}"`,
+		Agent:       `claude --model {model} "{task}"`,
 		TaskMode:    "placeholder",
+		ModelHint:   "claude-opus-4-5",
 	},
 	{
 		Name:        "gemini",
 		Description: "Gemini CLI (Google) — headless, auto-approve all tools via --yolo",
-		Agent:       "gemini --yolo",
+		Agent:       "gemini --yolo --model {model}",
 		TaskMode:    "stdin",
+		ModelHint:   "gemini-2.0-flash",
 	},
 	{
 		Name:        "gemini-arg",
 		Description: "Gemini CLI — headless with task as argument, auto-approve all tools",
-		Agent:       `gemini --yolo "{task}"`,
+		Agent:       `gemini --yolo --model {model} "{task}"`,
 		TaskMode:    "placeholder",
+		ModelHint:   "gemini-2.0-flash",
 	},
 	{
 		Name:        "aider",
 		Description: "Aider — headless, auto-approve all changes via --yes-always",
-		Agent:       `aider --yes-always --message "{task}"`,
+		Agent:       `aider --yes-always --model {model} --message "{task}"`,
 		TaskMode:    "placeholder",
+		ModelHint:   "gpt-4o",
 	},
 	{
 		Name:        "vibe",
@@ -58,8 +64,9 @@ var builtinTemplates = []agentTemplate{
 	{
 		Name:        "copilot",
 		Description: "GitHub Copilot CLI — non-interactive, all tools allowed",
-		Agent:       `copilot --prompt "{task}" --allow-all-tools`,
+		Agent:       `copilot --prompt "{task}" --allow-all-tools --model {model}`,
 		TaskMode:    "placeholder",
+		ModelHint:   "claude-sonnet-4",
 	},
 	{
 		Name:        "gh-copilot",
@@ -70,32 +77,37 @@ var builtinTemplates = []agentTemplate{
 	{
 		Name:        "codex",
 		Description: "OpenAI Codex CLI — headless, full autonomy via --full-auto",
-		Agent:       `codex --full-auto "{task}"`,
+		Agent:       `codex --full-auto --model {model} "{task}"`,
 		TaskMode:    "placeholder",
+		ModelHint:   "o3",
 	},
 	{
 		Name:        "opencode",
 		Description: "OpenCode — non-interactive run mode, all tools auto-approved, quiet output",
-		Agent:       `opencode run -q "{task}"`,
+		Agent:       `opencode run -q --model {model} "{task}"`,
 		TaskMode:    "placeholder",
+		ModelHint:   "openai/gpt-4o",
 	},
 	{
 		Name:        "opencode-stdin",
 		Description: "OpenCode — non-interactive run mode, task piped via --prompt flag",
-		Agent:       "opencode run -q --prompt",
+		Agent:       "opencode run -q --model {model} --prompt",
 		TaskMode:    "stdin",
+		ModelHint:   "openai/gpt-4o",
 	},
 	{
 		Name:        "qwen-code",
 		Description: "Qwen Code CLI (Alibaba) — headless, auto-approve all tools via --yolo",
-		Agent:       `qwen --yolo --prompt "{task}"`,
+		Agent:       `qwen --yolo --model {model} --prompt "{task}"`,
 		TaskMode:    "placeholder",
+		ModelHint:   "qwen2.5-coder-32b-instruct",
 	},
 	{
 		Name:        "qwen-code-stdin",
 		Description: "Qwen Code CLI — headless, all tools auto-approved, task piped to stdin",
-		Agent:       "qwen --yolo",
+		Agent:       "qwen --yolo --model {model}",
 		TaskMode:    "stdin",
+		ModelHint:   "qwen2.5-coder-32b-instruct",
 	},
 	{
 		Name:        "kiro",
@@ -166,10 +178,16 @@ func doTemplateShow(ctx context.Context, cmd *cli.Command) error {
 			fmt.Printf("Description: %s\n", t.Description)
 			fmt.Printf("Agent:       %s\n", t.Agent)
 			fmt.Printf("Task Mode:   %s\n", t.TaskMode)
+			if t.ModelHint != "" {
+				fmt.Printf("Model hint:  %s  (pass --model or set 'model:' in agents.yaml)\n", t.ModelHint)
+			}
 			fmt.Println()
 			fmt.Println("Example agents.yaml entry:")
 			fmt.Println()
 			example := agentDef{Name: t.Name + "-agent", Agent: t.Agent, Task: "your task here", Branch: "feature/" + t.Name}
+			if t.ModelHint != "" {
+				example.Model = t.ModelHint
+			}
 			data, _ := yaml.Marshal([]agentDef{example})
 			fmt.Printf("agents:\n  %s", string(data))
 			return nil
@@ -193,12 +211,16 @@ func doTemplateGenerate(ctx context.Context, cmd *cli.Command) error {
 		if tmpl == nil {
 			return fmt.Errorf("unknown template %q (use: phantom template list)", name)
 		}
-		agents = append(agents, agentDef{
+		def := agentDef{
 			Name:   tmpl.Name + "-agent",
 			Agent:  tmpl.Agent,
 			Task:   "TODO: describe your task",
 			Branch: "feature/" + tmpl.Name,
-		})
+		}
+		if tmpl.ModelHint != "" {
+			def.Model = tmpl.ModelHint
+		}
+		agents = append(agents, def)
 	}
 
 	cfg := agentsConfig{Agents: agents}
@@ -207,7 +229,10 @@ func doTemplateGenerate(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	header := "# Generated by: phantom template generate\n# Edit the 'task' fields before running.\n\n"
+	header := "# Generated by: phantom template generate\n" +
+		"# Edit the 'task' fields before running.\n" +
+		"# The 'model' field is optional — remove it to use the agent's default model,\n" +
+		"# or override all agents at once with: phantom run-all --model <name>\n\n"
 
 	if output != "" {
 		if err := os.WriteFile(output, []byte(header+string(data)), 0600); err != nil {

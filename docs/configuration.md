@@ -219,15 +219,20 @@ Used by `phantom run-all`:
 # Parallel mode (default)
 agents:
   - name: auth-agent
-    agent: "claude --print"
+    agent: "claude --print --dangerously-skip-permissions --model {model}"
     task: "implement authentication"
+    model: claude-opus-4-5   # optional: remove to use the agent's default model
     branch: "feature/auth"
     timeout: 30
   - name: api-agent
-    agent: 'aider --message "{task}"'
+    agent: 'aider --yes-always --model {model} --message "{task}"'
     task: "build REST API"
+    model: gpt-4o             # optional
     branch: "feature/api"
 ```
+
+> **Model is optional.** Remove the `model:` field to let the agent use its own default.
+> You can also override the model for all agents at once via CLI: `phantom run-all --model claude-sonnet-4`
 
 ```yaml
 # Sequential mode
@@ -236,11 +241,13 @@ name: pipeline
 branch: feature/full
 agents:
   - name: implement
-    agent: "claude --print"
+    agent: "claude --print --dangerously-skip-permissions --model {model}"
     task: "implement the feature"
+    model: claude-opus-4-5
   - name: test
-    agent: "claude --print"
+    agent: "claude --print --dangerously-skip-permissions --model {model}"
     task: "write tests"
+    model: claude-sonnet-4
 ```
 
 ## chain.yaml Format
@@ -252,16 +259,21 @@ name: feature-pipeline
 branch: feature/auth
 steps:
   - name: implement
-    agent: "claude --print"
+    agent: "claude --print --dangerously-skip-permissions --model {model}"
     task: "implement authentication module"
+    model: claude-opus-4-5   # optional
     timeout: 30
   - name: test
-    agent: "claude --print"
+    agent: "claude --print --dangerously-skip-permissions --model {model}"
     task: "write unit tests"
+    model: claude-sonnet-4
   - name: lint
-    agent: 'aider --message "{task}"'
+    agent: 'aider --yes-always --model {model} --message "{task}"'
     task: "fix linting errors"
+    # no model: field — uses aider's default
 ```
+
+> Override all step models at once: `phantom run-chain --model gemini-2.0-flash --config chain.yaml`
 
 ---
 
@@ -284,6 +296,7 @@ OVERLAY_BRANCH=feature/auth
 | `OVERLAY_NAME` | `--name` flag |
 | `OVERLAY_AGENT` | `--agent` flag |
 | `OVERLAY_TASK` | `--task` flag |
+| `OVERLAY_MODEL` | `--model` flag |
 | `OVERLAY_BASE` | `base-dir` argument |
 | `OVERLAY_BRANCH` | `--branch` flag |
 
