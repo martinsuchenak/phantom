@@ -418,3 +418,23 @@ func TestForceUnmount(t *testing.T) {
 		t.Fatalf("forceUnmount failed: %v", err)
 	}
 }
+
+func TestDoPrune(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewPruneCommand()
+
+	runCommandWithArgs(t, []string{"prune", "--dry-run", "--force"}, func() {
+		err := doPrune(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+}

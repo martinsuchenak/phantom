@@ -1,10 +1,12 @@
 package commands
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/pkg/api"
 )
 
@@ -134,5 +136,48 @@ func TestApplyFileCopy_NoMountPoint(t *testing.T) {
 	err := applyFileCopy(ovl, false)
 	if err == nil {
 		t.Error("expected error for empty mount point")
+	}
+}
+
+func TestApplyGit(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	baseDir := filepath.Join(tmpDir, "base")
+	os.MkdirAll(baseDir, 0755)
+
+	initGitRepo(t, baseDir)
+
+	runGit(t, baseDir, "checkout", "-b", "phantom/overlay")
+
+	// Make a change in the overlay
+	os.WriteFile(filepath.Join(baseDir, "overlay.txt"), []byte("overlay change"), 0644)
+
+	ovl := &api.Overlay{
+		Name:       "overlay",
+		BaseDir:    baseDir,
+		MountPoint: baseDir,
+		Branch:     "phantom/overlay",
+	}
+
+	gitOps := git.NewOperations()
+
+	// Dry run
+	err := applyGit(context.Background(), ovl, gitOps, true)
+	if err != nil {
+		t.Fatalf("applyGit dryRun failed: %v", err)
+	}
+
+	// Normal apply
+	runGit(t, baseDir, "checkout", "main")
+	err = applyGit(context.Background(), ovl, gitOps, false)
+	if err != nil {
+		t.Fatalf("applyGit failed: %v", err)
 	}
 }

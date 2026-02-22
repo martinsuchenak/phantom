@@ -204,3 +204,63 @@ func TestProcessStatus(t *testing.T) {
 		}
 	})
 }
+
+func TestDoCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewCommitCommand()
+
+	runCommandWithArgs(t, []string{"commit"}, func() {
+		err := doCommit(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for missing name, got none")
+		}
+	})
+}
+
+func TestDoApply(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewApplyCommand()
+
+	runCommandWithArgs(t, []string{"apply"}, func() {
+		err := doApply(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for missing name, got none")
+		}
+	})
+}
+
+func TestDoStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewStatusCommand()
+
+	runCommandWithArgs(t, []string{"status"}, func() {
+		err := doStatus(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("expected no error for empty name (all overlays), got %v", err)
+		}
+	})
+}

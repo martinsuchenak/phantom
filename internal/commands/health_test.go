@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -76,4 +78,34 @@ func TestPrintHealthReport_NoIssues(t *testing.T) {
 	if err != nil {
 		t.Errorf("printHealthReport no issues failed: %v", err)
 	}
+}
+
+func TestDoHealth(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewHealthCommand()
+
+	// mock basic setup
+	os.MkdirAll(filepath.Join(tmpDir, "state"), 0755)
+
+	runCommandWithArgs(t, []string{"health"}, func() {
+		err := doHealth(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
+
+	runCommandWithArgs(t, []string{"health", "--format", "json", "--fix"}, func() {
+		err := doHealth(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+	})
 }

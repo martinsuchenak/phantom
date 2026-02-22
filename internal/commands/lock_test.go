@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -71,6 +72,60 @@ func TestSetLock(t *testing.T) {
 	t.Run("lock nonexistent", func(t *testing.T) {
 		if err := setLock("nonexistent", true); err == nil {
 			t.Error("expected error for nonexistent overlay")
+		}
+	})
+}
+
+func TestDoLock(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewLockCommand()
+
+	runCommandWithArgs(t, []string{"lock"}, func() {
+		err := doLock(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for missing name, got none")
+		}
+	})
+
+	runCommandWithArgs(t, []string{"lock", "nonexistent"}, func() {
+		err := doLock(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for nonexistent overlay, got none")
+		}
+	})
+}
+
+func TestDoUnlock(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewUnlockCommand()
+
+	runCommandWithArgs(t, []string{"unlock"}, func() {
+		err := doUnlock(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for missing name, got none")
+		}
+	})
+
+	runCommandWithArgs(t, []string{"unlock", "nonexistent"}, func() {
+		err := doUnlock(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for nonexistent overlay, got none")
 		}
 	})
 }

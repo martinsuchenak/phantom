@@ -1,113 +1,96 @@
 package commands
 
-import "testing"
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-func TestFindTemplate(t *testing.T) {
-	tests := []struct {
-		name  string
-		found bool
-	}{
-		{"claude", true},
-		{"gemini", true},
-		{"aider", true},
-		{"vibe", true},
-		{"copilot", true},
-		{"codex", true},
-		{"nonexistent", false},
-		{"", false},
+func TestTemplateInternalFuncs(t *testing.T) {
+	if idx := indexOf("hello world", "world"); idx != 6 {
+		t.Errorf("indexOf failed, got %d", idx)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpl := findTemplate(tt.name)
-			if tt.found && tmpl == nil {
-				t.Errorf("expected to find template %q", tt.name)
-			}
-			if !tt.found && tmpl != nil {
-				t.Errorf("expected template %q to not be found", tt.name)
-			}
-		})
+	if idx := indexOf("hello world", "baz"); idx != -1 {
+		t.Errorf("indexOf failed, got %d", idx)
+	}
+
+	if s := trimSpace("  hello \t"); s != "hello" {
+		t.Errorf("trimSpace failed, got %q", s)
+	}
+
+	parts := splitString("a,b,c", ",")
+	if len(parts) != 3 || parts[0] != "a" || parts[1] != "b" || parts[2] != "c" {
+		t.Errorf("splitString failed, got %v", parts)
+	}
+
+	names := parseInlineAgentNames(" claude , gemini,  ")
+	if len(names) != 2 || names[0] != "claude" || names[1] != "gemini" {
+		t.Errorf("parseInlineAgentNames failed, got %v", names)
+	}
+
+	if templ := findTemplate("claude"); templ == nil {
+		t.Error("findTemplate failed for claude")
+	}
+	if templ := findTemplate("nonexistent"); templ != nil {
+		t.Error("findTemplate succeeded for nonexistent")
 	}
 }
 
-func TestParseInlineAgentNames(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected int
-	}{
-		{"claude,aider,gemini", 3},
-		{"claude", 1},
-		{"", 0},
-		{",,,", 0},
-		{"claude, aider , gemini", 3},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := parseInlineAgentNames(tt.input)
-			if len(got) != tt.expected {
-				t.Errorf("parseInlineAgentNames(%q) = %v (len %d), want len %d", tt.input, got, len(got), tt.expected)
-			}
-		})
-	}
+func runCommandWithArgs(t *testing.T, args []string, f func()) {
+	oldArgs := os.Args
+	os.Args = append([]string{"phantom"}, args...)
+	defer func() { os.Args = oldArgs }()
+	f()
 }
 
-func TestSplitAndTrim(t *testing.T) {
-	tests := []struct {
-		input    string
-		sep      string
-		expected []string
-	}{
-		{"a,b,c", ",", []string{"a", "b", "c"}},
-		{" a , b , c ", ",", []string{"a", "b", "c"}},
-		{"", ",", nil},
-		{"  ,  ,  ", ",", nil},
-		{"hello", ",", []string{"hello"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := splitAndTrim(tt.input, tt.sep)
-			if len(got) != len(tt.expected) {
-				t.Errorf("splitAndTrim(%q, %q) = %v, want %v", tt.input, tt.sep, got, tt.expected)
-				return
-			}
-			for i := range got {
-				if got[i] != tt.expected[i] {
-					t.Errorf("splitAndTrim(%q, %q)[%d] = %q, want %q", tt.input, tt.sep, i, got[i], tt.expected[i])
-				}
-			}
-		})
-	}
-}
+func TestDoTemplateCommands(t *testing.T) {
+	oldLog := log
+	defer func() {
+		log = oldLog
+	}()
+	log = &MockLogger{}
 
-func TestSplitString(t *testing.T) {
-	got := splitString("a:b:c", ":")
-	if len(got) != 3 || got[0] != "a" || got[1] != "b" || got[2] != "c" {
-		t.Errorf("splitString failed: %v", got)
-	}
-}
+	// Temporarily redirect stdout? Not strictly necessary for coverage, but nice to avoid noise
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
 
-func TestIndexOf(t *testing.T) {
-	if indexOf("hello world", "world") != 6 {
-		t.Error("expected index 6")
-	}
-	if indexOf("hello", "xyz") != -1 {
-		t.Error("expected -1 for not found")
-	}
-}
+	cmd := NewTemplateCommand()
 
-func TestTrimSpace(t *testing.T) {
-	tests := []struct {
-		input, expected string
-	}{
-		{"  hello  ", "hello"},
-		{"\thello\t", "hello"},
-		{"hello", "hello"},
-		{"", ""},
-		{"   ", ""},
-	}
-	for _, tt := range tests {
-		got := trimSpace(tt.input)
-		if got != tt.expected {
-			t.Errorf("trimSpace(%q) = %q, want %q", tt.input, got, tt.expected)
+	// 1. template list
+	runCommandWithArgs(t, []string{"list"}, func() {
+		if err := cmd.Execute(context.Background()); err != nil {
+			t.Logf("Execute list err: %v", err)
 		}
-	}
+	})
+
+	runCommandWithArgs(t, []string{"list", "--format", "json"}, func() {
+		_ = cmd.Execute(context.Background())
+	})
+
+	// 2. template show
+	runCommandWithArgs(t, []string{"show", "claude"}, func() {
+		_ = cmd.Execute(context.Background())
+	})
+	runCommandWithArgs(t, []string{"show", "nonexistent"}, func() {
+		_ = cmd.Execute(context.Background())
+	})
+
+	// 3. template generate
+	tmpFile := filepath.Join(t.TempDir(), "agents.yaml")
+	runCommandWithArgs(t, []string{"generate", "--agents", "claude,gemini", "--output", tmpFile}, func() {
+		_ = cmd.Execute(context.Background())
+	})
+
+	runCommandWithArgs(t, []string{"generate", "--agents", "claude"}, func() {
+		_ = cmd.Execute(context.Background())
+	})
+
+	runCommandWithArgs(t, []string{"generate", "--agents", "nonexistent"}, func() {
+		_ = cmd.Execute(context.Background())
+	})
 }

@@ -80,3 +80,57 @@ func TestSetLockAndPin(t *testing.T) {
 		t.Errorf("expected PinnedCommit to persist, got %q", loaded.PinnedCommit)
 	}
 }
+
+func TestDoPin(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewPinCommand()
+
+	runCommandWithArgs(t, []string{"pin"}, func() {
+		err := doPin(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for missing name, got none")
+		}
+	})
+
+	runCommandWithArgs(t, []string{"pin", "nonexistent"}, func() {
+		err := doPin(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for nonexistent overlay, got none")
+		}
+	})
+}
+
+func TestDoUnpin(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmd := NewUnpinCommand()
+
+	runCommandWithArgs(t, []string{"unpin"}, func() {
+		err := doUnpin(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for missing name, got none")
+		}
+	})
+
+	runCommandWithArgs(t, []string{"unpin", "nonexistent"}, func() {
+		err := doUnpin(context.Background(), cmd)
+		if err == nil {
+			t.Fatalf("expected error for nonexistent overlay, got none")
+		}
+	})
+}

@@ -2,10 +2,14 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/martinsuchenak/phantom/internal/config"
 )
 
 func TestNewRunChainCommand(t *testing.T) {
@@ -190,5 +194,53 @@ func TestPrintChainSummary_StoppedEarly(t *testing.T) {
 	}
 	if !strings.Contains(output, "step-1") {
 		t.Errorf("expected 'step-1' in output, got %q", output)
+	}
+}
+
+func TestProcessRunChain(t *testing.T) {
+	mockBinDir, cleanup := setupMockPath(t)
+	defer cleanup()
+
+	tmpDir := t.TempDir()
+
+	oldCfg := cfg
+	oldLog := log
+	defer func() {
+		cfg = oldCfg
+		log = oldLog
+	}()
+
+	cfg = &config.Config{
+		StateDir: filepath.Join(tmpDir, "state"),
+		Darwin: config.Darwin{
+			UnionFSPath: "unionfs-fuse",
+		},
+		Agent: config.Agent{
+			DefaultTimeoutMinutes: 1,
+		},
+	}
+	log = &MockLogger{}
+
+	baseDir := filepath.Join(tmpDir, "base")
+	os.MkdirAll(baseDir, 0755)
+
+	name := "chain-test"
+	mountPoint := filepath.Join(tmpDir, "state", "mnt", name)
+	updateMockMount(t, mockBinDir, mountPoint)
+
+	steps := []chainStep{
+		{
+			Name:  "step-1",
+			Agent: "echo step1",
+		},
+		{
+			Name:  "step-2",
+			Agent: "echo step2", // Mock agent running a failing command
+		},
+	}
+
+	err := processRunChain(context.Background(), baseDir, name, "", steps, 1, true, false, true, "json")
+	if err != nil {
+		t.Fatalf("processRunChain failed: %v", err)
 	}
 }

@@ -1,10 +1,14 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/martinsuchenak/phantom/internal/state"
+	"github.com/martinsuchenak/phantom/pkg/api"
 )
 
 func TestDoSnapshotListEmpty(t *testing.T) {
@@ -127,4 +131,51 @@ func TestSnapshotMetaSerialization(t *testing.T) {
 	if loaded.SizeBytes != meta.SizeBytes {
 		t.Errorf("size mismatch: %d vs %d", loaded.SizeBytes, meta.SizeBytes)
 	}
+}
+
+func TestDoSnapshotCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	oldLog := log
+	log = &MockLogger{}
+	defer func() {
+		log = oldLog
+	}()
+
+	cmdSave := NewSnapshotCommand()
+
+	// Create a dummy overlay state
+	store, _ := state.NewStore(cfg.GetStatePath())
+	ovl := &api.Overlay{
+		Name:     "test-ovl",
+		UpperDir: filepath.Join(tmpDir, "upper"),
+	}
+	os.MkdirAll(ovl.UpperDir, 0755)
+	store.Save(ovl)
+
+	// Test doSnapshotSave directly
+	runCommandWithArgs(t, []string{"save", "test-ovl", "--snapshot-name", "snap1"}, func() {
+		_ = cmdSave.Execute(context.Background())
+	})
+
+	// Test doSnapshotList directly
+	runCommandWithArgs(t, []string{"list"}, func() {
+		_ = cmdSave.Execute(context.Background())
+	})
+
+	runCommandWithArgs(t, []string{"list", "test-ovl", "--format", "json"}, func() {
+		_ = cmdSave.Execute(context.Background())
+	})
+
+	// Test doSnapshotRestore directly
+	// Unmounted overlay restore
+	runCommandWithArgs(t, []string{"restore", "test-ovl", "snap1"}, func() {
+		_ = cmdSave.Execute(context.Background())
+	})
+
+	// Test doSnapshotDelete directly
+	runCommandWithArgs(t, []string{"delete", "snap1"}, func() {
+		_ = cmdSave.Execute(context.Background())
+	})
 }

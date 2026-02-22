@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/martinsuchenak/phantom/internal/config"
 )
 
 func TestLoadAgentsConfig_Valid(t *testing.T) {
@@ -84,5 +87,48 @@ func TestGetConfigMode_InvalidYAML(t *testing.T) {
 	mode, _, _ := getConfigMode(configPath)
 	if mode != "parallel" {
 		t.Errorf("expected parallel default for invalid yaml, got %s", mode)
+	}
+}
+
+func TestProcessRunAll(t *testing.T) {
+	mockBinDir, cleanup := setupMockPath(t)
+	defer cleanup()
+
+	tmpDir := t.TempDir()
+
+	oldCfg := cfg
+	oldLog := log
+	defer func() {
+		cfg = oldCfg
+		log = oldLog
+	}()
+
+	cfg = &config.Config{
+		StateDir: filepath.Join(tmpDir, "state"),
+		Darwin: config.Darwin{
+			UnionFSPath: "unionfs-fuse",
+		},
+		Agent: config.Agent{
+			DefaultTimeoutMinutes: 1,
+		},
+	}
+	log = &MockLogger{}
+
+	baseDir := filepath.Join(tmpDir, "base")
+	os.MkdirAll(baseDir, 0755)
+
+	mountPoint := filepath.Join(tmpDir, "state", "mnt", "agent-1")
+	updateMockMount(t, mockBinDir, mountPoint)
+
+	agents := []agentDef{
+		{
+			Name:  "agent-1",
+			Agent: "echo hello",
+		},
+	}
+
+	err := processRunAll(context.Background(), baseDir, agents, 1, true, false, "json")
+	if err != nil {
+		t.Fatalf("processRunAll failed: %v", err)
 	}
 }
