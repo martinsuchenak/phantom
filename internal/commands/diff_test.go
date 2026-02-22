@@ -1,17 +1,25 @@
 package commands
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestCountFileChanges(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "phantom-diff-test-*")
-	if err != nil {
-		t.Fatal(err)
+func TestNewDiffCommand(t *testing.T) {
+	cmd := NewDiffCommand()
+	if cmd.Name != "diff" {
+		t.Errorf("expected command name 'diff', got %q", cmd.Name)
 	}
-	defer os.RemoveAll(tmpDir)
+}
+
+func TestProcessDiff(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	store := createTestStore(t, tmpDir)
 
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
@@ -19,93 +27,180 @@ func TestCountFileChanges(t *testing.T) {
 	os.MkdirAll(upperDir, 0755)
 
 	// Create base files
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("hello"), 0644)
+	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("original"), 0644)
 
-	// Upper: modified file (exists in base)
+	// Create upper files (changes)
 	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("modified"), 0644)
-	// Upper: added file (not in base)
-	os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
-	// Upper: whiteout (deletion marker)
+	os.WriteFile(filepath.Join(upperDir, "new-file.txt"), []byte("added"), 0644)
 	os.WriteFile(filepath.Join(upperDir, ".wh.deleted.txt"), []byte{}, 0644)
 
-	added, modified, deleted := countFileChanges(upperDir, baseDir)
-
-	if added != 1 {
-		t.Errorf("expected 1 added, got %d", added)
-	}
-	if modified != 1 {
-		t.Errorf("expected 1 modified, got %d", modified)
-	}
-	if deleted != 1 {
-		t.Errorf("expected 1 deleted, got %d", deleted)
-	}
-}
-
-func TestCountFileChanges_EmptyUpperDir(t *testing.T) {
-	added, modified, deleted := countFileChanges("", "/tmp/base")
-	if added != 0 || modified != 0 || deleted != 0 {
-		t.Errorf("expected all zeros for empty upper dir, got %d/%d/%d", added, modified, deleted)
-	}
-}
-
-func TestCountFileChanges_SkipsWorkDir(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "phantom-diff-work-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	upperDir := filepath.Join(tmpDir, "upper")
-	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(filepath.Join(upperDir, "work"), 0755)
-	os.WriteFile(filepath.Join(upperDir, "work", "internal.txt"), []byte("skip"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "real.txt"), []byte("count"), 0644)
-
-	added, modified, deleted := countFileChanges(upperDir, baseDir)
-	if added != 1 {
-		t.Errorf("expected 1 added (skipping work/), got %d", added)
-	}
-	if modified != 0 || deleted != 0 {
-		t.Errorf("expected 0 modified/deleted, got %d/%d", modified, deleted)
-	}
-}
-
-func TestProcessDiff(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "phantom-processdiff-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	setupTestEnv(t, tmpDir)
-
-	baseDir := filepath.Join(tmpDir, "base")
-	upperDir := filepath.Join(tmpDir, "state", "overlays", "test-diff", "upper")
-	mountDir := filepath.Join(tmpDir, "state", "mnt", "test-diff")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
-	os.MkdirAll(mountDir, 0755)
-
-	// Create base file and modified version in upper
-	os.WriteFile(filepath.Join(baseDir, "file.txt"), []byte("original"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("changed"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("new"), 0644)
-
-	// Save overlay state
-	store := createTestStore(t, tmpDir)
-	ovl := testOverlay("test-diff", baseDir, mountDir, upperDir)
+	ovl := testOverlay("test-diff", baseDir, filepath.Join(tmpDir, "mnt"), upperDir)
 	store.Save(&ovl)
 
-	// Test all formats
-	for _, format := range []string{"table", "json", "simple"} {
-		if err := processDiff("test-diff", format, false); err != nil {
-			t.Errorf("processDiff(%s) failed: %v", format, err)
-		}
-	}
+	t.Run("table format", func(t *testing.T) {
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
 
-	// Test stat-only
-	if err := processDiff("test-diff", "table", true); err != nil {
-		t.Errorf("processDiff stat-only failed: %v", err)
+		err := processDiff("test-diff", "table", false)
+
+		w.Close()
+		os.Stdout = old
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		output := buf.String()
+
+		if err != nil {
+			t.Fatalf("processDiff failed: %v", err)
+		}
+		if !strings.Contains(output, "existing.txt") {
+			t.Errorf("expected 'existing.txt' in output")
+		}
+		if !strings.Contains(output, "new-file.txt") {
+			t.Errorf("expected 'new-file.txt' in output")
+		}
+	})
+
+	t.Run("json format", func(t *testing.T) {
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := processDiff("test-diff", "json", false)
+
+		w.Close()
+		os.Stdout = old
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		output := buf.String()
+
+		if err != nil {
+			t.Fatalf("processDiff json failed: %v", err)
+		}
+		if !strings.Contains(output, `"status"`) {
+			t.Errorf("expected JSON with status field")
+		}
+	})
+
+	t.Run("simple format", func(t *testing.T) {
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		err := processDiff("test-diff", "simple", false)
+
+		w.Close()
+		os.Stdout = old
+		var buf bytes.Buffer
+		buf.ReadFrom(r)
+		output := buf.String()
+
+		if err != nil {
+			t.Fatalf("processDiff simple failed: %v", err)
+		}
+		if !strings.Contains(output, "A\t") || !strings.Contains(output, "M\t") || !strings.Contains(output, "D\t") {
+			t.Errorf("expected A/M/D prefixes in simple output, got %q", output)
+		}
+	})
+
+	t.Run("stat only", func(t *testing.T) {
+		err := processDiff("test-diff", "table", true)
+		if err != nil {
+			t.Fatalf("processDiff stat failed: %v", err)
+		}
+	})
+}
+
+func TestProcessDiffNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+	createTestStore(t, tmpDir)
+
+	err := processDiff("nonexistent", "table", false)
+	if err == nil {
+		t.Error("expected error for nonexistent overlay")
+	}
+}
+
+func TestProcessDiffNoUpperDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+	store := createTestStore(t, tmpDir)
+
+	ovl := testOverlay("no-upper", tmpDir, tmpDir, "")
+	store.Save(&ovl)
+
+	err := processDiff("no-upper", "table", false)
+	if err == nil {
+		t.Error("expected error for overlay with no upper dir")
+	}
+}
+
+func TestProcessDiffEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+	store := createTestStore(t, tmpDir)
+
+	baseDir := filepath.Join(tmpDir, "base")
+	upperDir := filepath.Join(tmpDir, "upper")
+	os.MkdirAll(baseDir, 0755)
+	os.MkdirAll(upperDir, 0755)
+
+	ovl := testOverlay("empty-diff", baseDir, filepath.Join(tmpDir, "mnt"), upperDir)
+	store.Save(&ovl)
+
+	err := processDiff("empty-diff", "table", false)
+	if err != nil {
+		t.Fatalf("processDiff on empty overlay failed: %v", err)
+	}
+}
+
+func TestCountFileChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, "base")
+	upperDir := filepath.Join(tmpDir, "upper")
+	os.MkdirAll(baseDir, 0755)
+	os.MkdirAll(upperDir, 0755)
+
+	// Base has existing file
+	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+
+	// Upper has: modified existing, new file, whiteout
+	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
+	os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("new"), 0644)
+	os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
+
+	a, m, d := countFileChanges(upperDir, baseDir)
+	if a != 1 {
+		t.Errorf("expected 1 added, got %d", a)
+	}
+	if m != 1 {
+		t.Errorf("expected 1 modified, got %d", m)
+	}
+	if d != 1 {
+		t.Errorf("expected 1 deleted, got %d", d)
+	}
+}
+
+func TestCountFileChangesEmpty(t *testing.T) {
+	a, m, d := countFileChanges("", "")
+	if a != 0 || m != 0 || d != 0 {
+		t.Errorf("expected all zeros for empty upper dir, got %d/%d/%d", a, m, d)
+	}
+}
+
+func TestPrintDiffStat(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestEnv(t, tmpDir)
+
+	result := diffResult{
+		Name:     "test",
+		Added:    3,
+		Modified: 2,
+		Deleted:  1,
+	}
+	err := printDiffStat(result)
+	if err != nil {
+		t.Errorf("printDiffStat failed: %v", err)
 	}
 }

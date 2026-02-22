@@ -6,107 +6,102 @@ import (
 	"testing"
 )
 
-func TestNewMergeCommand(t *testing.T) {
-	cmd := NewMergeCommand()
-	if cmd.Name != "merge" {
-		t.Errorf("expected command name 'merge', got %q", cmd.Name)
-	}
-}
-
-func TestPlanMerge(t *testing.T) {
-	tmpDir := t.TempDir()
-	srcUpper := filepath.Join(tmpDir, "src-upper")
-	dstUpper := filepath.Join(tmpDir, "dst-upper")
-	os.MkdirAll(srcUpper, 0755)
-	os.MkdirAll(dstUpper, 0755)
-
-	t.Run("no conflicts", func(t *testing.T) {
-		os.WriteFile(filepath.Join(srcUpper, "a.txt"), []byte("a"), 0644)
-
-		actions, err := planMerge(srcUpper, dstUpper)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(actions) != 1 {
-			t.Fatalf("expected 1 action, got %d", len(actions))
-		}
-		if actions[0].RelPath != "a.txt" || actions[0].Status != "copy" || actions[0].IsConflict {
-			t.Errorf("unexpected action: %+v", actions[0])
-		}
-	})
-
-	t.Run("with conflict", func(t *testing.T) {
-		// Both overlays have the same file
-		os.WriteFile(filepath.Join(srcUpper, "shared.txt"), []byte("src"), 0644)
-		os.WriteFile(filepath.Join(dstUpper, "shared.txt"), []byte("dst"), 0644)
-
-		actions, err := planMerge(srcUpper, dstUpper)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		foundConflict := false
-		for _, a := range actions {
-			if a.RelPath == "shared.txt" && a.IsConflict {
-				foundConflict = true
-			}
-		}
-		if !foundConflict {
-			t.Error("expected conflict for shared.txt")
-		}
-	})
-
-	t.Run("whiteout files", func(t *testing.T) {
-		os.WriteFile(filepath.Join(srcUpper, ".wh.removed.txt"), []byte{}, 0644)
-
-		actions, err := planMerge(srcUpper, dstUpper)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		foundDelete := false
-		for _, a := range actions {
-			if a.RelPath == "removed.txt" && a.Status == "delete" {
-				foundDelete = true
-			}
-		}
-		if !foundDelete {
-			t.Error("expected delete action for whiteout file")
-		}
-	})
-}
-
-func TestPlanMergeEmpty(t *testing.T) {
-	tmpDir := t.TempDir()
-	srcUpper := filepath.Join(tmpDir, "src-empty")
-	dstUpper := filepath.Join(tmpDir, "dst-empty")
-	os.MkdirAll(srcUpper, 0755)
-	os.MkdirAll(dstUpper, 0755)
+func TestPlanMerge_NoChanges(t *testing.T) {
+	srcUpper := t.TempDir()
+	dstUpper := t.TempDir()
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("planMerge failed: %v", err)
 	}
 	if len(actions) != 0 {
-		t.Errorf("expected 0 actions for empty dirs, got %d", len(actions))
+		t.Errorf("expected 0 actions, got %d", len(actions))
 	}
 }
 
-func TestPlanMergeSkipsWorkDir(t *testing.T) {
-	tmpDir := t.TempDir()
-	srcUpper := filepath.Join(tmpDir, "src")
-	dstUpper := filepath.Join(tmpDir, "dst")
+func TestPlanMerge_CopyFiles(t *testing.T) {
+	srcUpper := t.TempDir()
+	dstUpper := t.TempDir()
+
+	// Create a file in source
+	os.WriteFile(filepath.Join(srcUpper, "new.txt"), []byte("hello"), 0644)
+
+	actions, err := planMerge(srcUpper, dstUpper)
+	if err != nil {
+		t.Fatalf("planMerge failed: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(actions))
+	}
+	if actions[0].Status != "copy" {
+		t.Errorf("expected copy, got %s", actions[0].Status)
+	}
+	if actions[0].IsConflict {
+		t.Error("should not be a conflict")
+	}
+}
+
+func TestPlanMerge_Conflict(t *testing.T) {
+	srcUpper := t.TempDir()
+	dstUpper := t.TempDir()
+
+	// Same file in both
+	os.WriteFile(filepath.Join(srcUpper, "shared.txt"), []byte("src"), 0644)
+	os.WriteFile(filepath.Join(dstUpper, "shared.txt"), []byte("dst"), 0644)
+
+	actions, err := planMerge(srcUpper, dstUpper)
+	if err != nil {
+		t.Fatalf("planMerge failed: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(actions))
+	}
+	if !actions[0].IsConflict {
+		t.Error("should be a conflict")
+	}
+}
+
+func TestPlanMerge_Whiteout(t *testing.T) {
+	srcUpper := t.TempDir()
+	dstUpper := t.TempDir()
+
+	// Create a whiteout file (deletion marker)
+	os.WriteFile(filepath.Join(srcUpper, ".wh.deleted.txt"), []byte{}, 0644)
+
+	actions, err := planMerge(srcUpper, dstUpper)
+	if err != nil {
+		t.Fatalf("planMerge failed: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(actions))
+	}
+	if actions[0].Status != "delete" {
+		t.Errorf("expected delete, got %s", actions[0].Status)
+	}
+	if actions[0].RelPath != "deleted.txt" {
+		t.Errorf("expected 'deleted.txt', got %q", actions[0].RelPath)
+	}
+}
+
+func TestPlanMerge_SkipsWorkDir(t *testing.T) {
+	srcUpper := t.TempDir()
+	dstUpper := t.TempDir()
+
+	// Create work directory (should be skipped)
 	os.MkdirAll(filepath.Join(srcUpper, "work"), 0755)
-	os.MkdirAll(dstUpper, 0755)
 	os.WriteFile(filepath.Join(srcUpper, "work", "internal.txt"), []byte("skip"), 0644)
+	// Also a real file
 	os.WriteFile(filepath.Join(srcUpper, "real.txt"), []byte("keep"), 0644)
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("planMerge failed: %v", err)
 	}
 	if len(actions) != 1 {
-		t.Errorf("expected 1 action (skipping work/), got %d", len(actions))
+		t.Fatalf("expected 1 action (skipping work/), got %d", len(actions))
+	}
+	if actions[0].RelPath != "real.txt" {
+		t.Errorf("expected 'real.txt', got %q", actions[0].RelPath)
 	}
 }
 
@@ -115,13 +110,33 @@ func TestPrintMergePlan(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	actions := []mergeAction{
-		{RelPath: "new.txt", Status: "copy"},
+		{RelPath: "added.txt", Status: "copy", IsConflict: false},
 		{RelPath: "conflict.txt", Status: "copy", IsConflict: true},
-		{RelPath: "removed.txt", Status: "delete"},
+		{RelPath: "removed.txt", Status: "delete", IsConflict: false},
 	}
 
 	err := printMergePlan(actions, "src", "dst", 1)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Fatalf("printMergePlan failed: %v", err)
+	}
+}
+
+func TestPlanMerge_NestedFiles(t *testing.T) {
+	srcUpper := t.TempDir()
+	dstUpper := t.TempDir()
+
+	os.MkdirAll(filepath.Join(srcUpper, "sub", "deep"), 0755)
+	os.WriteFile(filepath.Join(srcUpper, "sub", "deep", "file.go"), []byte("package main"), 0644)
+
+	actions, err := planMerge(srcUpper, dstUpper)
+	if err != nil {
+		t.Fatalf("planMerge failed: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("expected 1 action, got %d", len(actions))
+	}
+	expected := filepath.Join("sub", "deep", "file.go")
+	if actions[0].RelPath != expected {
+		t.Errorf("expected %q, got %q", expected, actions[0].RelPath)
 	}
 }

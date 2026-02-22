@@ -15,7 +15,15 @@ type overlayManager interface {
 	Prune() error
 }
 
+// createOverlayManagerFunc is the function used to create overlay managers.
+// It can be overridden in tests to inject a mock.
+var createOverlayManagerFunc = defaultCreateOverlayManager
+
 // createOverlayManager creates the platform-specific overlay manager
 func createOverlayManager() (overlayManager, error) {
+	return createOverlayManagerFunc()
+}
+
+func defaultCreateOverlayManager() (overlayManager, error) {
 	return newOverlayManager(cfg)
 }
