@@ -1,0 +1,14 @@
+mode: pipeline
+name: test-pipeline
+branch: main
+agents:
+  - name: agent-a
+    agent: "echo 'I am Agent A'"
+    task: "do A"
+  - name: agent-b
+    agent: "echo 'I am Agent B'"
+    task: "do B"
+  - name: agent-c
+    agent: "echo 'I am Agent C'"
+    task: "do C resolving conflicts if any"
+    depends_on: [agent-a, agent-b]

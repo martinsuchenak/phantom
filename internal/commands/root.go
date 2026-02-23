@@ -75,6 +75,7 @@ func Execute() {
 			NewLogsCommand(),
 			NewRestartCommand(),
 			NewRunAllCommand(),
+			NewRunPipelineCommand(),
 			NewRunChainCommand(),
 			NewWatchCommand(),
 			NewReplayCommand(),

@@ -36,7 +36,7 @@ func (g *Operations) runGit(ctx context.Context, repoPath string, args ...string
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_DISCOVERY_ACROSS_FILESYSTEM=1")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -177,6 +177,15 @@ func (g *Operations) Fetch(ctx context.Context, repoPath string) error {
 	return err
 }
 
+// FetchFrom fetches a specific branch from another local repository (useful for cross-overlay merges)
+func (g *Operations) FetchFrom(ctx context.Context, repoPath, remotePath, branchName string) error {
+	_, err := g.runGit(ctx, repoPath, "fetch", remotePath, branchName)
+	if err != nil {
+		return api.NewError(api.ErrGitFailed, fmt.Sprintf("failed to fetch branch %s from %s", branchName, remotePath), err)
+	}
+	return nil
+}
+
 // GetStatus returns the git status output
 func (g *Operations) GetStatus(ctx context.Context, repoPath string) (string, error) {
 	return g.runGit(ctx, repoPath, "status", "--short")
@@ -186,6 +195,7 @@ func (g *Operations) GetStatus(ctx context.Context, repoPath string) (string, er
 func (g *Operations) GetLog(ctx context.Context, repoPath string, count int) (string, error) {
 	return g.runGit(ctx, repoPath, "log", "--oneline", fmt.Sprintf("-%d", count))
 }
+
 // MergeBranch merges the specified branch into the current branch
 func (g *Operations) MergeBranch(ctx context.Context, repoPath, branchName string) error {
 	_, err := g.runGit(ctx, repoPath, "merge", branchName)
@@ -194,6 +204,31 @@ func (g *Operations) MergeBranch(ctx context.Context, repoPath, branchName strin
 	}
 	return nil
 }
+
+// MergeBranchNoEdit merges the specified branch into the current branch without opening an editor
+func (g *Operations) MergeBranchNoEdit(ctx context.Context, repoPath, branchName string) error {
+	_, err := g.runGit(ctx, repoPath, "merge", "--no-edit", branchName)
+	if err != nil {
+		return api.NewError(api.ErrGitFailed, fmt.Sprintf("failed to merge branch %s", branchName), err)
+	}
+	return nil
+}
+
+// GetUnmergedFiles returns a list of files that have unmerged conflicts
+func (g *Operations) GetUnmergedFiles(ctx context.Context, repoPath string) ([]string, error) {
+	output, err := g.runGit(ctx, repoPath, "status", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	var unmerged []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if strings.HasPrefix(line, "UU ") || strings.HasPrefix(line, "U  ") || strings.HasPrefix(line, " U ") {
+			unmerged = append(unmerged, strings.TrimSpace(line[3:]))
+		}
+	}
+	return unmerged, nil
+}
+
 // Rebase rebases the current branch onto the specified branch
 func (g *Operations) Rebase(ctx context.Context, repoPath, ontoBranch string) error {
 	_, err := g.runGit(ctx, repoPath, "rebase", ontoBranch)
