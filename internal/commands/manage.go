@@ -132,42 +132,61 @@ func RunInteractiveManage(ctx context.Context, mgr overlayManager, store *state.
 			},
 			{
 				Name:        "run",
-				Description: "Run a single agent: /run <base-dir> <agent-cmd> [task]",
+				Description: "Run a single agent: /run <base-dir> <agent-cmd> [task] [--model <model>]",
 				Handler: func(args string) {
-					parts := strings.Fields(strings.TrimSpace(args))
+					args = strings.TrimSpace(args)
+					// Parse optional --model flag
+					model := ""
+					if idx := strings.Index(args, "--model "); idx != -1 {
+						model = strings.Fields(args[idx+8:])[0]
+						args = strings.TrimSpace(args[:idx])
+					}
+					parts := strings.Fields(args)
 					if len(parts) < 2 {
-						t.AddMessage(tui.RoleSystem, "Usage: /run <base-dir> <agent-cmd> [task]")
+						t.AddMessage(tui.RoleSystem, "Usage: /run <base-dir> <agent-cmd> [task] [--model <model>]")
 						return
 					}
 					task := ""
 					if len(parts) > 2 {
 						task = strings.Join(parts[2:], " ")
 					}
-					go runTUIRun(ctx, t, parts[0], parts[1], task, "", "", "", 0, false, false, false)
+					go runTUIRun(ctx, t, parts[0], parts[1], task, model, "", "", 0, false, false, false)
 				},
 			},
 			{
 				Name:        "run-all",
-				Description: "Run agents in parallel: /run-all <base-dir> <config.yaml>",
+				Description: "Run agents in parallel: /run-all <base-dir> <config.yaml> [--model <model>]",
 				Handler: func(args string) {
-					parts := strings.Fields(strings.TrimSpace(args))
+					args = strings.TrimSpace(args)
+					model := ""
+					if idx := strings.Index(args, "--model "); idx != -1 {
+						model = strings.Fields(args[idx+8:])[0]
+						args = strings.TrimSpace(args[:idx])
+					}
+					parts := strings.Fields(args)
 					if len(parts) < 2 {
-						t.AddMessage(tui.RoleSystem, "Usage: /run-all <base-dir> <config.yaml>")
+						t.AddMessage(tui.RoleSystem, "Usage: /run-all <base-dir> <config.yaml> [--model <model>]")
 						return
 					}
-					go runTUIRunAll(ctx, t, parts[0], parts[1])
+					go runTUIRunAll(ctx, t, parts[0], parts[1], model)
 				},
 			},
 			{
 				Name:        "run-chain",
-				Description: "Run agents sequentially: /run-chain <base-dir> <config.yaml>",
+				Description: "Run agents sequentially: /run-chain <base-dir> <config.yaml> [--model <model>]",
 				Handler: func(args string) {
-					parts := strings.Fields(strings.TrimSpace(args))
+					args = strings.TrimSpace(args)
+					model := ""
+					if idx := strings.Index(args, "--model "); idx != -1 {
+						model = strings.Fields(args[idx+8:])[0]
+						args = strings.TrimSpace(args[:idx])
+					}
+					parts := strings.Fields(args)
 					if len(parts) < 2 {
-						t.AddMessage(tui.RoleSystem, "Usage: /run-chain <base-dir> <config.yaml>")
+						t.AddMessage(tui.RoleSystem, "Usage: /run-chain <base-dir> <config.yaml> [--model <model>]")
 						return
 					}
-					go runTUIRunChain(ctx, t, parts[0], parts[1])
+					go runTUIRunChain(ctx, t, parts[0], parts[1], model)
 				},
 			},
 			{Name: "health", Description: "Run a system health check", Handler: func(_ string) { runHealthInner(t, mgr, store, false) }},
@@ -301,9 +320,15 @@ func openMainMenu(ctx context.Context, t *tui.TUI, mgr overlayManager, store *st
 					// ── Single run ─────────────────────────────────────────
 					{
 						Label:  "Run  (single agent)",
-						Prompt: "Enter: base-dir  agent-cmd  [task]",
+						Prompt: "Enter: base-dir  agent-cmd  [task]  [--model name]",
 						OnSelect: func(_ *tui.MenuItem, input string) {
-							parts := strings.Fields(strings.TrimSpace(input))
+							input = strings.TrimSpace(input)
+							model := ""
+							if idx := strings.Index(input, "--model "); idx != -1 {
+								model = strings.Fields(input[idx+8:])[0]
+								input = strings.TrimSpace(input[:idx])
+							}
+							parts := strings.Fields(input)
 							if len(parts) < 2 {
 								t.AddMessage(tui.RoleSystem, "Need at least: base-dir  agent-cmd")
 								return
@@ -312,7 +337,7 @@ func openMainMenu(ctx context.Context, t *tui.TUI, mgr overlayManager, store *st
 							if len(parts) > 2 {
 								task = strings.Join(parts[2:], " ")
 							}
-							go runTUIRun(ctx, t, parts[0], parts[1], task, "", "", "", 0, false, false, false)
+							go runTUIRun(ctx, t, parts[0], parts[1], task, model, "", "", 0, false, false, false)
 						},
 					},
 					{
@@ -344,23 +369,77 @@ func openMainMenu(ctx context.Context, t *tui.TUI, mgr overlayManager, store *st
 														Title: "Run options",
 														Items: []*tui.MenuItem{
 															{
-																Label: "Run now  (no task, no cleanup)",
+																Label: "Run immediately  (no task, default model)",
 																OnSelect: func(_ *tui.MenuItem, _ string) {
 																	go runTUIRun(ctx, t, baseDir, agentCmd, "", "", "", "", 0, false, false, false)
 																},
 															},
 															{
-																Label:  "Run with task",
+																Label:  "Run with task…",
 																Prompt: "Task description:",
 																OnSelect: func(_ *tui.MenuItem, task string) {
-																	go runTUIRun(ctx, t, baseDir, agentCmd, task, "", "", "", 0, false, false, false)
+																	task = strings.TrimSpace(task)
+																	if task == "" {
+																		t.AddMessage(tui.RoleSystem, "Cancelled.")
+																		return
+																	}
+																	t.OpenMenu(&tui.Menu{
+																		Title: "Model for: " + task,
+																		Items: []*tui.MenuItem{
+																			{
+																				Label: "Default model  (use agent's configured model)",
+																				OnSelect: func(_ *tui.MenuItem, _ string) {
+																					go runTUIRun(ctx, t, baseDir, agentCmd, task, "", "", "", 0, false, false, false)
+																				},
+																			},
+																			{
+																				Label:  "Choose model…",
+																				Prompt: "Model name (e.g. gpt-4o, claude-3-7-sonnet):",
+																				OnSelect: func(_ *tui.MenuItem, model string) {
+																					model = strings.TrimSpace(model)
+																					go runTUIRun(ctx, t, baseDir, agentCmd, task, model, "", "", 0, false, false, false)
+																				},
+																			},
+																		},
+																	})
 																},
 															},
 															{
-																Label:  "Run with task + cleanup after",
+																Label:  "Run with model only…",
+																Prompt: "Model name (e.g. gpt-4o, claude-3-7-sonnet):",
+																OnSelect: func(_ *tui.MenuItem, model string) {
+																	model = strings.TrimSpace(model)
+																	go runTUIRun(ctx, t, baseDir, agentCmd, "", model, "", "", 0, false, false, false)
+																},
+															},
+															{
+																Label:  "Run with task + cleanup after…",
 																Prompt: "Task description:",
 																OnSelect: func(_ *tui.MenuItem, task string) {
-																	go runTUIRun(ctx, t, baseDir, agentCmd, task, "", "", "", 0, true, false, false)
+																	task = strings.TrimSpace(task)
+																	if task == "" {
+																		t.AddMessage(tui.RoleSystem, "Cancelled.")
+																		return
+																	}
+																	t.OpenMenu(&tui.Menu{
+																		Title: "Model for cleanup run",
+																		Items: []*tui.MenuItem{
+																			{
+																				Label: "Default model",
+																				OnSelect: func(_ *tui.MenuItem, _ string) {
+																					go runTUIRun(ctx, t, baseDir, agentCmd, task, "", "", "", 0, true, false, false)
+																				},
+																			},
+																			{
+																				Label:  "Choose model…",
+																				Prompt: "Model name:",
+																				OnSelect: func(_ *tui.MenuItem, model string) {
+																					model = strings.TrimSpace(model)
+																					go runTUIRun(ctx, t, baseDir, agentCmd, task, model, "", "", 0, true, false, false)
+																				},
+																			},
+																		},
+																	})
 																},
 															},
 														},
@@ -376,27 +455,37 @@ func openMainMenu(ctx context.Context, t *tui.TUI, mgr overlayManager, store *st
 					// ── Run-all ───────────────────────────────────────────
 					{
 						Label:  "Run-All  (parallel agents from config)",
-						Prompt: "Enter: base-dir  config.yaml",
+						Prompt: "Enter: base-dir  config.yaml  [--model name]",
 						OnSelect: func(_ *tui.MenuItem, input string) {
+							model := ""
+							if idx := strings.Index(input, "--model "); idx != -1 {
+								model = strings.Fields(input[idx+8:])[0]
+								input = strings.TrimSpace(input[:idx])
+							}
 							parts := strings.Fields(strings.TrimSpace(input))
 							if len(parts) < 2 {
 								t.AddMessage(tui.RoleSystem, "Need: base-dir  config.yaml")
 								return
 							}
-							go runTUIRunAll(ctx, t, parts[0], parts[1])
+							go runTUIRunAll(ctx, t, parts[0], parts[1], model)
 						},
 					},
 					// ── Run-chain ─────────────────────────────────────────
 					{
 						Label:  "Run-Chain  (sequential steps from config)",
-						Prompt: "Enter: base-dir  config.yaml",
+						Prompt: "Enter: base-dir  config.yaml  [--model name]",
 						OnSelect: func(_ *tui.MenuItem, input string) {
+							model := ""
+							if idx := strings.Index(input, "--model "); idx != -1 {
+								model = strings.Fields(input[idx+8:])[0]
+								input = strings.TrimSpace(input[:idx])
+							}
 							parts := strings.Fields(strings.TrimSpace(input))
 							if len(parts) < 2 {
 								t.AddMessage(tui.RoleSystem, "Need: base-dir  config.yaml")
 								return
 							}
-							go runTUIRunChain(ctx, t, parts[0], parts[1])
+							go runTUIRunChain(ctx, t, parts[0], parts[1], model)
 						},
 					},
 				},
@@ -1490,7 +1579,8 @@ func runTUIRun(ctx context.Context, t *tui.TUI, baseDir, agentCmd, task, model, 
 }
 
 // runTUIRunAll loads an agents config file and runs all agents in parallel.
-func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath string) {
+// model is an optional global model override (empty = use per-agent config).
+func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
 	t.StartSpinner(fmt.Sprintf("Loading agents from %s…", configPath))
 	agents, err := loadAgentsConfig(configPath)
 	t.StopSpinner()
@@ -1498,7 +1588,15 @@ func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath string) {
 		t.AddMessage(tui.RoleSystem, "run-all: failed to load config: "+err.Error())
 		return
 	}
-	t.AddMessage(tui.RoleSystem, fmt.Sprintf("Starting %d agent(s) in parallel…", len(agents)))
+	// Apply global model override
+	if model != "" {
+		for i := range agents {
+			agents[i].Model = model
+		}
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Starting %d agent(s) in parallel with model %q…", len(agents), model))
+	} else {
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Starting %d agent(s) in parallel…", len(agents)))
+	}
 
 	oldLog := log
 	log = &tuiLogger{t: t}
@@ -1513,7 +1611,8 @@ func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath string) {
 }
 
 // runTUIRunChain loads a chain config file and runs steps sequentially.
-func runTUIRunChain(ctx context.Context, t *tui.TUI, baseDir, configPath string) {
+// model is an optional global model override (empty = use per-step config).
+func runTUIRunChain(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
 	t.StartSpinner(fmt.Sprintf("Loading chain from %s…", configPath))
 	chainCfg, err := loadChainConfig(configPath)
 	t.StopSpinner()
@@ -1526,7 +1625,15 @@ func runTUIRunChain(ctx context.Context, t *tui.TUI, baseDir, configPath string)
 		t.AddMessage(tui.RoleSystem, "run-chain: no steps defined in config.")
 		return
 	}
-	t.AddMessage(tui.RoleSystem, fmt.Sprintf("Running chain %q (%d step(s))…", chainCfg.Name, len(steps)))
+	// Apply global model override to all steps
+	if model != "" {
+		for i := range steps {
+			steps[i].Model = model
+		}
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Running chain %q (%d step(s)) with model %q…", chainCfg.Name, len(steps), model))
+	} else {
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Running chain %q (%d step(s))…", chainCfg.Name, len(steps)))
+	}
 
 	oldLog := log
 	log = &tuiLogger{t: t}
