@@ -51,6 +51,39 @@ agents:
 
 ---
 
+## Map-Reduce Pipeline (DAG)
+
+Construct a Directed Acyclic Graph (DAG) for complex operations that involve parallel sub-tasks feeding into a sequencer.
+
+```bash
+phantom run-pipeline ~/myproject --config map-reduce.yaml --cleanup
+```
+
+`map-reduce.yaml`:
+
+```yaml
+name: map-reduce-feature
+agents:
+  - name: frontend-agent
+    agent: "claude --print"
+    task: "build the React component for the new dashboard"
+  - name: backend-agent
+    agent: "claude --print"
+    task: "build the Go API handlers for the new dashboard"
+  - name: e2e-tests
+    agent: "aider"
+    task: "write Cypress end-to-end tests for the new dashboard"
+    depends_on:
+      - frontend-agent
+      - backend-agent
+```
+
+Independent agents `frontend-agent` and `backend-agent` will run in parallel. When *both* complete successfully, `e2e-tests` will execute, first automatically fetching and merging the branches of its parents. If merge conflicts occur between parallel agents, the sequencer agent is prompted to resolve them automatically!
+
+**Note:** `run-pipeline` requires a completely clean Git working tree before starting. Ensure all tracking files are committed or stashed.
+
+---
+
 ## Pipeline: Implement → Test → Lint
 
 Chain agents so each builds on the previous one's work.

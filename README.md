@@ -6,7 +6,7 @@ A CLI tool for managing overlay filesystems to enable multiple AI agents to work
 
 - Cross-platform: Linux (native overlayfs + fuse-overlayfs) and macOS (unionfs-fuse)
 - Git integration: automatic branch per overlay, commit, push, merge
-- Run agents in parallel (`run-all`) or sequentially (`run-chain`)
+- Run agents in parallel (`run-all`), sequentially (`run-chain`), or as a DAG (`run-pipeline`)
 - Post-run hooks for linting, testing, notifications
 - Overlay snapshots, cloning, merging, comparing
 - Lock/pin overlays to prevent accidental cleanup or base drift
@@ -93,7 +93,7 @@ make install      # -> /usr/local/bin/phantom
 |---------|-------------|
 | `start` / `stop` / `restart` | Create, unmount, remount overlays |
 | `list` / `status` / `inspect` | View overlay state |
-| `run` / `run-all` / `run-chain` | Run agents (single, parallel, sequential) |
+| `run` / `run-all` / `run-chain` / `run-pipeline` | Run agents (single, parallel, sequential, or DAG pipeline) |
 | `diff` / `compare` / `conflicts` | View and compare changes |
 | `commit` / `apply` / `merge` / `sync` | Commit, apply to base, merge, sync with base |
 | `watch` / `logs` / `replay` | Monitor and re-run agents |

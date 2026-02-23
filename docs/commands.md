@@ -173,6 +173,27 @@ phantom run-chain ~/myproject --config chain.yaml --model claude-sonnet-4 --cont
 | `--continue-on-error` | Keep running remaining steps on failure |
 | `--format` | Summary format: `table` (default), `json` |
 
+### `phantom run-pipeline <base-dir>`
+
+Run agents in a direct acyclic graph (DAG) pipeline, enabling parallel workers that funnel into sequential merges via dependency relationships.
+
+```bash
+phantom run-pipeline ~/myproject --config pipeline.yaml
+phantom run-pipeline ~/myproject --config pipeline.yaml --cleanup --push
+```
+
+| Flag | Description |
+|------|-------------|
+| `--config, -c` | Path to pipeline YAML config file (required) |
+| `--timeout` | Global timeout per agent in minutes |
+| `--model, -m` | Model name — overrides `model:` in YAML for all agents. Optional. |
+| `--cleanup` | Cleanup all overlays after completion |
+| `--push` | Push branches to remote on completion |
+| `--format` | Summary format: `table` (default), `json` |
+
+Unlike `run-all` or `run-chain`, `run-pipeline` interprets `depends_on` arrays within the YAML to construct a dependency graph. Independent agents run in parallel branches, and dependent agents automatically fetch and merge their parents' completion branches before starting their own work.
+**Note:** `run-pipeline` requires the base directory to be a clean Git repository (no uncommitted or untracked changes) to safely resolve and protect the merging processes.
+
 ### `phantom replay <name>`
 
 Re-run the last agent command that was executed in an overlay. Reads from the log file header.
