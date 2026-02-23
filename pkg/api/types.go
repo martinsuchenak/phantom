@@ -1,6 +1,7 @@
 package api
 
 import (
+	"io"
 	"time"
 )
 
@@ -47,7 +48,9 @@ type RunOptions struct {
 	Timeout   time.Duration
 	Cleanup   bool
 	PushOnEnd bool
-	Headless  bool // No stdin, log-only output (for parallel runs)
+	Headless  bool      // No stdin, log-only output (for parallel runs)
+	Stdout    io.Writer // Optional: custom stdout writer
+	Stderr    io.Writer // Optional: custom stderr writer
 }
 
 // Error codes

@@ -86,12 +86,24 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	if err != nil {
 		r.log.Debug("Failed to create log file: %v", err)
 		if opts.Headless {
-			// In headless mode with no log file, discard output
+			// In headless mode with no log file, discard output unless custom writers provided
 			cmd.Stdout = io.Discard
+			if opts.Stdout != nil {
+				cmd.Stdout = opts.Stdout
+			}
 			cmd.Stderr = io.Discard
+			if opts.Stderr != nil {
+				cmd.Stderr = opts.Stderr
+			}
 		} else {
 			cmd.Stdout = os.Stdout
+			if opts.Stdout != nil {
+				cmd.Stdout = opts.Stdout
+			}
 			cmd.Stderr = os.Stderr
+			if opts.Stderr != nil {
+				cmd.Stderr = opts.Stderr
+			}
 		}
 	} else {
 		defer logFile.Close()
@@ -104,13 +116,30 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 		fmt.Fprintf(logFile, "=========================\n\n")
 
 		if opts.Headless {
-			// Headless: output goes only to log file
-			cmd.Stdout = logFile
-			cmd.Stderr = logFile
+			// Headless: output goes to log file, plus custom writers if any
+			if opts.Stdout != nil {
+				cmd.Stdout = io.MultiWriter(opts.Stdout, logFile)
+			} else {
+				cmd.Stdout = logFile
+			}
+			if opts.Stderr != nil {
+				cmd.Stderr = io.MultiWriter(opts.Stderr, logFile)
+			} else {
+				cmd.Stderr = logFile
+			}
 		} else {
 			// Interactive: tee output to both terminal and log file
-			cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
-			cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
+			stdoutWriters := []io.Writer{os.Stdout, logFile}
+			if opts.Stdout != nil {
+				stdoutWriters = []io.Writer{opts.Stdout, logFile}
+			}
+			cmd.Stdout = io.MultiWriter(stdoutWriters...)
+
+			stderrWriters := []io.Writer{os.Stderr, logFile}
+			if opts.Stderr != nil {
+				stderrWriters = []io.Writer{opts.Stderr, logFile}
+			}
+			cmd.Stderr = io.MultiWriter(stderrWriters...)
 		}
 	}
 

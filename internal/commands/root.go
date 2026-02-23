@@ -97,6 +97,7 @@ func Execute() {
 			NewConflictsCommand(),
 			NewGCCommand(),
 			NewConfigCommand(),
+			NewManageCommand(),
 			cli.GenerateCompletionCommand(),
 		},
 		PreRun: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {

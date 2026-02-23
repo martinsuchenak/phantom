@@ -15,6 +15,7 @@ import (
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
+	"github.com/paularlott/cli/tui"
 	"gopkg.in/yaml.v3"
 )
 
@@ -96,6 +97,10 @@ func NewRunChainCommand() *cli.Command {
 				Name:  "from",
 				Usage: "Start running from the step with this name",
 			},
+			&cli.BoolFlag{
+				Name:  "tui",
+				Usage: "Enable interactive Terminal User Interface mode",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -171,7 +176,9 @@ func doRunChain(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, continueOnError, format)
+	useTui := cmd.GetBool("tui")
+
+	return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, continueOnError, format, useTui)
 }
 
 func loadChainConfig(path string) (*chainConfig, error) {
@@ -244,144 +251,162 @@ func filterSteps(steps []chainStep, onlyStep, fromStep string) ([]chainStep, err
 	return steps, nil
 }
 
-func processRunChain(ctx context.Context, baseDir, name, branch string, steps []chainStep, globalTimeout int, doCleanup, doPush, continueOnError bool, format string) error {
-	absBaseDir, err := filepath.Abs(baseDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve base directory: %w", err)
+func processRunChain(ctx context.Context, baseDir, name, branch string, steps []chainStep, globalTimeout int, doCleanup, doPush, continueOnError bool, format string, useTui bool) error {
+	var results []agentResult
+	stopped := false
+
+	logic := func(childCtx context.Context, t *tui.TUI) error {
+		absBaseDir, err := filepath.Abs(baseDir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve base directory: %w", err)
+		}
+
+		runAutoCleanup()
+
+		log.Info("Starting chain %q with %d step(s) on %s", name, len(steps), absBaseDir)
+
+		store, err := state.NewStore(cfg.GetStatePath())
+		if err != nil {
+			return fmt.Errorf("failed to initialize state store: %w", err)
+		}
+
+		mgr, err := createOverlayManager()
+		if err != nil {
+			return err
+		}
+
+		gitOps := git.NewOperations()
+		isGit, _ := gitOps.IsGitRepo(ctx, absBaseDir)
+
+		if branch == "" && isGit && cfg.Git.AutoBranch {
+			branch = cfg.Git.BranchPrefix + name
+		}
+
+		// Create or reuse the single overlay
+		var ovl *api.Overlay
+		if store.Exists(name) {
+			ovl, err = store.Load(name)
+			if err != nil {
+				return fmt.Errorf("failed to load existing overlay: %w", err)
+			}
+			mounted, merr := mgr.IsMounted(ovl)
+			if merr != nil {
+				return merr
+			}
+			if !mounted {
+				if err := mgr.Mount(ovl); err != nil {
+					return fmt.Errorf("failed to mount existing overlay: %w", err)
+				}
+			}
+			log.Info("Reusing existing overlay %q", name)
+		} else {
+			opts := &api.CreateOptions{
+				Name:    name,
+				BaseDir: absBaseDir,
+				Branch:  branch,
+			}
+			ovl, err = mgr.Create(opts)
+			if err != nil {
+				return fmt.Errorf("failed to create overlay: %w", err)
+			}
+
+			if isGit && branch != "" {
+				branchExists, _ := gitOps.BranchExists(childCtx, absBaseDir, branch)
+				if !branchExists {
+					if err := gitOps.CreateBranch(childCtx, ovl.MountPoint, branch, ""); err != nil {
+						log.Warn("Failed to create branch %s: %v", branch, err)
+					}
+				} else {
+					if err := gitOps.SwitchBranch(childCtx, ovl.MountPoint, branch); err != nil {
+						log.Warn("Failed to switch to branch %s: %v", branch, err)
+					}
+				}
+			}
+
+			if err := store.Save(ovl); err != nil {
+				mgr.Cleanup(ovl)
+				return fmt.Errorf("failed to save overlay state: %w", err)
+			}
+			log.Info("Created overlay %q at %s", name, ovl.MountPoint)
+		}
+
+		results = make([]agentResult, 0, len(steps))
+		for i, step := range steps {
+			if childCtx.Err() != nil {
+				log.Warn("Chain interrupted by user")
+				stopped = true
+				break
+			}
+
+			if t != nil {
+				t.SetProgress("Running chain...", float64(i)/float64(len(steps)))
+			}
+
+			log.Info("[%d/%d] Running step %q: %s", i+1, len(steps), step.Name, step.Agent)
+
+			result := runChainStep(childCtx, step, ovl, absBaseDir, globalTimeout, t)
+			results = append(results, result)
+
+			if result.ExitCode != 0 || result.Error != "" {
+				log.Error("[%d/%d] Step %q failed (exit %d)", i+1, len(steps), step.Name, result.ExitCode)
+				if !continueOnError {
+					stopped = true
+					break
+				}
+			} else {
+				log.Info("[%d/%d] Step %q completed in %s", i+1, len(steps), step.Name, formatDuration(result.Duration))
+			}
+		}
+
+		// Push if requested and at least one step succeeded
+		if doPush && ovl.Branch != "" {
+			hasChanges, _ := gitOps.HasUncommittedChanges(ctx, ovl.MountPoint)
+			if hasChanges {
+				commitMsg := fmt.Sprintf("phantom chain: %s", name)
+				if err := gitOps.CommitAll(ctx, ovl.MountPoint, commitMsg); err != nil {
+					log.Warn("Failed to commit before push: %v", err)
+				}
+			}
+			if err := gitOps.PushBranch(ctx, ovl.MountPoint, ovl.Branch, false); err != nil {
+				log.Warn("Failed to push branch: %v", err)
+			}
+		}
+
+		// If not cleaning up, clear the stale FUSE PID from state so that
+		// `phantom health` does not flag the overlay as unhealthy after the
+		// run completes. The unionfs-fuse process exits once the mount is no
+		// longer actively used; keeping the old PID around causes a false
+		// dead_pid alarm.
+		if !doCleanup && ovl.PID > 0 {
+			ovl.PID = 0
+			if err := store.Save(ovl); err != nil {
+				log.Warn("Failed to update overlay state after chain completion: %v", err)
+			}
+		}
+
+		// Cleanup if requested
+		if doCleanup {
+			log.Debug("Cleaning up overlay %q", name)
+			if err := mgr.Cleanup(ovl); err != nil {
+				log.Warn("Failed to cleanup: %v", err)
+			}
+			store.Delete(name)
+		}
+
+		return nil
 	}
 
-	runAutoCleanup()
-
-	log.Info("Starting chain %q with %d step(s) on %s", name, len(steps), absBaseDir)
-
-	store, err := state.NewStore(cfg.GetStatePath())
-	if err != nil {
-		return fmt.Errorf("failed to initialize state store: %w", err)
+	var err error
+	if useTui {
+		err = RunWithTUI(ctx, fmt.Sprintf("Phantom: Chain %s", name), logic)
+	} else {
+		err = logic(ctx, nil)
 	}
-
-	mgr, err := createOverlayManager()
 	if err != nil {
 		return err
 	}
 
-	gitOps := git.NewOperations()
-	isGit, _ := gitOps.IsGitRepo(ctx, absBaseDir)
-
-	if branch == "" && isGit && cfg.Git.AutoBranch {
-		branch = cfg.Git.BranchPrefix + name
-	}
-
-	// Create or reuse the single overlay
-	var ovl *api.Overlay
-	if store.Exists(name) {
-		ovl, err = store.Load(name)
-		if err != nil {
-			return fmt.Errorf("failed to load existing overlay: %w", err)
-		}
-		mounted, merr := mgr.IsMounted(ovl)
-		if merr != nil {
-			return merr
-		}
-		if !mounted {
-			if err := mgr.Mount(ovl); err != nil {
-				return fmt.Errorf("failed to mount existing overlay: %w", err)
-			}
-		}
-		log.Info("Reusing existing overlay %q", name)
-	} else {
-		opts := &api.CreateOptions{
-			Name:    name,
-			BaseDir: absBaseDir,
-			Branch:  branch,
-		}
-		ovl, err = mgr.Create(opts)
-		if err != nil {
-			return fmt.Errorf("failed to create overlay: %w", err)
-		}
-
-		if isGit && branch != "" {
-			branchExists, _ := gitOps.BranchExists(ctx, absBaseDir, branch)
-			if !branchExists {
-				if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branch, ""); err != nil {
-					log.Warn("Failed to create branch %s: %v", branch, err)
-				}
-			} else {
-				if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branch); err != nil {
-					log.Warn("Failed to switch to branch %s: %v", branch, err)
-				}
-			}
-		}
-
-		if err := store.Save(ovl); err != nil {
-			mgr.Cleanup(ovl)
-			return fmt.Errorf("failed to save overlay state: %w", err)
-		}
-		log.Info("Created overlay %q at %s", name, ovl.MountPoint)
-	}
-
-	// Run steps sequentially
-	results := make([]agentResult, 0, len(steps))
-	stopped := false
-
-	for i, step := range steps {
-		if ctx.Err() != nil {
-			log.Warn("Chain interrupted by user")
-			stopped = true
-			break
-		}
-
-		log.Info("[%d/%d] Running step %q: %s", i+1, len(steps), step.Name, step.Agent)
-
-		result := runChainStep(ctx, step, ovl, absBaseDir, globalTimeout)
-		results = append(results, result)
-
-		if result.ExitCode != 0 || result.Error != "" {
-			log.Error("[%d/%d] Step %q failed (exit %d)", i+1, len(steps), step.Name, result.ExitCode)
-			if !continueOnError {
-				stopped = true
-				break
-			}
-		} else {
-			log.Info("[%d/%d] Step %q completed in %s", i+1, len(steps), step.Name, formatDuration(result.Duration))
-		}
-	}
-
-	// Push if requested and at least one step succeeded
-	if doPush && ovl.Branch != "" {
-		hasChanges, _ := gitOps.HasUncommittedChanges(ctx, ovl.MountPoint)
-		if hasChanges {
-			commitMsg := fmt.Sprintf("phantom chain: %s", name)
-			if err := gitOps.CommitAll(ctx, ovl.MountPoint, commitMsg); err != nil {
-				log.Warn("Failed to commit before push: %v", err)
-			}
-		}
-		if err := gitOps.PushBranch(ctx, ovl.MountPoint, ovl.Branch, false); err != nil {
-			log.Warn("Failed to push branch: %v", err)
-		}
-	}
-
-	// If not cleaning up, clear the stale FUSE PID from state so that
-	// `phantom health` does not flag the overlay as unhealthy after the
-	// run completes. The unionfs-fuse process exits once the mount is no
-	// longer actively used; keeping the old PID around causes a false
-	// dead_pid alarm.
-	if !doCleanup && ovl.PID > 0 {
-		ovl.PID = 0
-		if err := store.Save(ovl); err != nil {
-			log.Warn("Failed to update overlay state after chain completion: %v", err)
-		}
-	}
-
-	// Cleanup if requested
-	if doCleanup {
-		log.Debug("Cleaning up overlay %q", name)
-		if err := mgr.Cleanup(ovl); err != nil {
-			log.Warn("Failed to cleanup: %v", err)
-		}
-		store.Delete(name)
-	}
-
-	// Print summary
+	// Print summary (moved outside the TUI to prevent raw terminal shifts)
 	if err := printChainSummary(results, format, stopped); err != nil {
 		return err
 	}
@@ -396,7 +421,7 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 	return nil
 }
 
-func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBaseDir string, globalTimeout int) agentResult {
+func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBaseDir string, globalTimeout int, t *tui.TUI) agentResult {
 	result := agentResult{
 		Name:  step.Name,
 		Agent: step.Agent,
@@ -428,6 +453,13 @@ func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBase
 		Name:     ovl.Name,
 		Timeout:  timeout,
 		Headless: true,
+	}
+
+	if t != nil {
+		w := NewTUIWriter(t, step.Name, true)
+		defer w.Close()
+		runOpts.Stdout = w
+		runOpts.Stderr = w
 	}
 
 	startTime := time.Now()

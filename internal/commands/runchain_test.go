@@ -239,7 +239,7 @@ func TestProcessRunChain(t *testing.T) {
 		},
 	}
 
-	err := processRunChain(context.Background(), baseDir, name, "", steps, 1, true, false, true, "json")
+	err := processRunChain(context.Background(), baseDir, name, "", steps, 1, true, false, true, "json", false)
 	if err != nil {
 		t.Fatalf("processRunChain failed: %v", err)
 	}

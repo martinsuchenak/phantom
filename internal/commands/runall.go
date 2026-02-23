@@ -17,6 +17,7 @@ import (
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
+	"github.com/paularlott/cli/tui"
 	"gopkg.in/yaml.v3"
 )
 
@@ -67,6 +68,10 @@ func NewRunAllCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:  "from",
 				Usage: "Start running from the agent with this name",
+			},
+			&cli.BoolFlag{
+				Name:  "tui",
+				Usage: "Enable interactive Terminal User Interface mode",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -153,16 +158,18 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
+	useTui := cmd.GetBool("tui")
+
 	// If config specifies sequential mode, delegate to chain execution
 	if configPath != "" {
 		mode, chainName, chainBranch := getConfigMode(configPath)
 		if mode == "sequential" {
 			steps := agentsToChainSteps(agents)
-			return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, false, format)
+			return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, false, format, useTui)
 		}
 	}
 
-	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format)
+	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format, useTui)
 }
 
 func loadAgentsConfig(path string) ([]agentDef, error) {
@@ -240,129 +247,145 @@ func filterAgents(agents []agentDef, onlyAgent, fromAgent string) ([]agentDef, e
 	return agents, nil
 }
 
-func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string) error {
-	absBaseDir, err := filepath.Abs(baseDir)
-	if err != nil {
-		return fmt.Errorf("failed to resolve base directory: %w", err)
+func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string, useTui bool) error {
+	var results []agentResult
+
+	logic := func(childCtx context.Context, t *tui.TUI) error {
+		absBaseDir, err := filepath.Abs(baseDir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve base directory: %w", err)
+		}
+
+		// Run auto-cleanup
+		runAutoCleanup()
+
+		log.Info("Starting %d agent(s) in parallel on %s", len(agents), absBaseDir)
+
+		store, err := state.NewStore(cfg.GetStatePath())
+		if err != nil {
+			return fmt.Errorf("failed to initialize state store: %w", err)
+		}
+
+		mgr, err := createOverlayManager()
+		if err != nil {
+			return err
+		}
+
+		gitOps := git.NewOperations()
+		isGit, _ := gitOps.IsGitRepo(ctx, absBaseDir)
+
+		// Phase 1: Create all overlays sequentially (mount operations shouldn't race)
+		type agentContext struct {
+			def agentDef
+			ovl *api.Overlay
+		}
+		var agentContexts []agentContext
+
+		for _, def := range agents {
+			// Check for name collision
+			if store.Exists(def.Name) {
+				log.Warn("Overlay %q already exists, skipping", def.Name)
+				continue
+			}
+
+			branch := def.Branch
+			if branch == "" && isGit && cfg.Git.AutoBranch {
+				branch = cfg.Git.BranchPrefix + def.Name
+			}
+
+			opts := &api.CreateOptions{
+				Name:    def.Name,
+				BaseDir: absBaseDir,
+				Branch:  branch,
+			}
+
+			ovl, err := mgr.Create(opts)
+			if err != nil {
+				log.Error("Failed to create overlay %q: %v", def.Name, err)
+				continue
+			}
+
+			// Handle git branch
+			if isGit && branch != "" {
+				branchExists, _ := gitOps.BranchExists(childCtx, absBaseDir, branch)
+				if !branchExists {
+					if err := gitOps.CreateBranch(childCtx, ovl.MountPoint, branch, ""); err != nil {
+						log.Warn("[%s] Failed to create branch %s: %v", def.Name, branch, err)
+					}
+				} else {
+					if err := gitOps.SwitchBranch(childCtx, ovl.MountPoint, branch); err != nil {
+						log.Warn("[%s] Failed to switch to branch %s: %v", def.Name, branch, err)
+					}
+				}
+			}
+
+			if err := store.Save(ovl); err != nil {
+				mgr.Cleanup(ovl)
+				log.Error("Failed to save state for %q: %v", def.Name, err)
+				continue
+			}
+
+			log.Info("[%s] Overlay created at %s", def.Name, ovl.MountPoint)
+			agentContexts = append(agentContexts, agentContext{def: def, ovl: ovl})
+		}
+
+		if len(agentContexts) == 0 {
+			return fmt.Errorf("no overlays were created successfully")
+		}
+
+		// Phase 2: Run all agents in parallel
+		var wg sync.WaitGroup
+		results = make([]agentResult, len(agentContexts))
+
+		for i, ac := range agentContexts {
+			wg.Add(1)
+			go func(idx int, ac agentContext) {
+				defer wg.Done()
+				results[idx] = runSingleAgent(childCtx, ac.def, ac.ovl, absBaseDir, globalTimeout, doPush, t)
+			}(i, ac)
+		}
+
+		wg.Wait()
+
+		// Phase 3: Cleanup if requested, otherwise clear stale FUSE PIDs so that
+		// `phantom health` does not raise false dead_pid alarms after runs complete.
+		if doCleanup {
+			for _, ac := range agentContexts {
+				log.Debug("Cleaning up overlay %q", ac.def.Name)
+				if err := mgr.Cleanup(ac.ovl); err != nil {
+					log.Warn("Failed to cleanup %q: %v", ac.def.Name, err)
+				}
+				store.Delete(ac.def.Name)
+			}
+		} else {
+			for _, ac := range agentContexts {
+				if ac.ovl.PID > 0 {
+					ac.ovl.PID = 0
+					if err := store.Save(ac.ovl); err != nil {
+						log.Warn("Failed to update state for %q: %v", ac.def.Name, err)
+					}
+				}
+			}
+		}
+
+		return nil
 	}
 
-	// Run auto-cleanup
-	runAutoCleanup()
-
-	log.Info("Starting %d agent(s) in parallel on %s", len(agents), absBaseDir)
-
-	store, err := state.NewStore(cfg.GetStatePath())
-	if err != nil {
-		return fmt.Errorf("failed to initialize state store: %w", err)
+	var err error
+	if useTui {
+		err = RunWithTUI(ctx, fmt.Sprintf("Phantom: Running %d agents", len(agents)), logic)
+	} else {
+		err = logic(ctx, nil)
 	}
-
-	mgr, err := createOverlayManager()
 	if err != nil {
 		return err
 	}
 
-	gitOps := git.NewOperations()
-	isGit, _ := gitOps.IsGitRepo(ctx, absBaseDir)
-
-	// Phase 1: Create all overlays sequentially (mount operations shouldn't race)
-	type agentContext struct {
-		def agentDef
-		ovl *api.Overlay
-	}
-	var agentContexts []agentContext
-
-	for _, def := range agents {
-		// Check for name collision
-		if store.Exists(def.Name) {
-			log.Warn("Overlay %q already exists, skipping", def.Name)
-			continue
-		}
-
-		branch := def.Branch
-		if branch == "" && isGit && cfg.Git.AutoBranch {
-			branch = cfg.Git.BranchPrefix + def.Name
-		}
-
-		opts := &api.CreateOptions{
-			Name:    def.Name,
-			BaseDir: absBaseDir,
-			Branch:  branch,
-		}
-
-		ovl, err := mgr.Create(opts)
-		if err != nil {
-			log.Error("Failed to create overlay %q: %v", def.Name, err)
-			continue
-		}
-
-		// Handle git branch
-		if isGit && branch != "" {
-			branchExists, _ := gitOps.BranchExists(ctx, absBaseDir, branch)
-			if !branchExists {
-				if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branch, ""); err != nil {
-					log.Warn("[%s] Failed to create branch %s: %v", def.Name, branch, err)
-				}
-			} else {
-				if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branch); err != nil {
-					log.Warn("[%s] Failed to switch to branch %s: %v", def.Name, branch, err)
-				}
-			}
-		}
-
-		if err := store.Save(ovl); err != nil {
-			mgr.Cleanup(ovl)
-			log.Error("Failed to save state for %q: %v", def.Name, err)
-			continue
-		}
-
-		log.Info("[%s] Overlay created at %s", def.Name, ovl.MountPoint)
-		agentContexts = append(agentContexts, agentContext{def: def, ovl: ovl})
-	}
-
-	if len(agentContexts) == 0 {
-		return fmt.Errorf("no overlays were created successfully")
-	}
-
-	// Phase 2: Run all agents in parallel
-	var wg sync.WaitGroup
-	results := make([]agentResult, len(agentContexts))
-
-	for i, ac := range agentContexts {
-		wg.Add(1)
-		go func(idx int, ac agentContext) {
-			defer wg.Done()
-			results[idx] = runSingleAgent(ctx, ac.def, ac.ovl, absBaseDir, globalTimeout, doPush)
-		}(i, ac)
-	}
-
-	wg.Wait()
-
-	// Phase 3: Cleanup if requested, otherwise clear stale FUSE PIDs so that
-	// `phantom health` does not raise false dead_pid alarms after runs complete.
-	if doCleanup {
-		for _, ac := range agentContexts {
-			log.Debug("Cleaning up overlay %q", ac.def.Name)
-			if err := mgr.Cleanup(ac.ovl); err != nil {
-				log.Warn("Failed to cleanup %q: %v", ac.def.Name, err)
-			}
-			store.Delete(ac.def.Name)
-		}
-	} else {
-		for _, ac := range agentContexts {
-			if ac.ovl.PID > 0 {
-				ac.ovl.PID = 0
-				if err := store.Save(ac.ovl); err != nil {
-					log.Warn("Failed to update state for %q: %v", ac.def.Name, err)
-				}
-			}
-		}
-	}
-
-	// Phase 4: Print summary
+	// Phase 4: Print summary OUTSIDE TUI lifecycle
 	return printRunAllSummary(results, format)
 }
 
-func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBaseDir string, globalTimeout int, doPush bool) agentResult {
+func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBaseDir string, globalTimeout int, doPush bool, t *tui.TUI) agentResult {
 	result := agentResult{
 		Name:  def.Name,
 		Agent: def.Agent,
@@ -396,6 +419,13 @@ func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBase
 		Timeout:   timeout,
 		PushOnEnd: doPush,
 		Headless:  true,
+	}
+
+	if t != nil {
+		w := NewTUIWriter(t, def.Name, false)
+		defer w.Close()
+		runOpts.Stdout = w
+		runOpts.Stderr = w
 	}
 
 	startTime := time.Now()
