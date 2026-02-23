@@ -324,6 +324,12 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 	stopped := false
 
 	for i, step := range steps {
+		if ctx.Err() != nil {
+			log.Warn("Chain interrupted by user")
+			stopped = true
+			break
+		}
+
 		log.Info("[%d/%d] Running step %q: %s", i+1, len(steps), step.Name, step.Agent)
 
 		result := runChainStep(ctx, step, ovl, absBaseDir, globalTimeout)
