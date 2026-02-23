@@ -283,6 +283,18 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 				return
 			}
 
+			defer func() {
+				if doCleanup {
+					mgr.Cleanup(ovl)
+					store.Delete(ovlName)
+				} else {
+					if ovl.PID > 0 {
+						ovl.PID = 0
+						store.Save(ovl)
+					}
+				}
+			}()
+
 			// Wait for FUSE to fully mount and expose the base directory (esp. .git)
 			for i := 0; i < 50; i++ {
 				if _, err := os.Stat(filepath.Join(ovl.MountPoint, ".git")); err == nil {
@@ -420,16 +432,6 @@ Once the conflict is resolved, proceed to your actual task.
 			} else {
 				err := fmt.Errorf("agent %q failed with exit code %d: %s", ag.Name, result.ExitCode, result.Error)
 				results.Store(ag.Name, pipelineDepResult{Err: err})
-			}
-
-			if doCleanup {
-				mgr.Cleanup(ovl)
-				store.Delete(ovlName)
-			} else {
-				if ovl.PID > 0 {
-					ovl.PID = 0
-					store.Save(ovl)
-				}
 			}
 		}(idx, a)
 	}
