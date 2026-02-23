@@ -51,6 +51,7 @@ phantom run-chain ~/myproject --steps "claude --print,aider" --name pipeline
 ## Documentation
 
 - [Command Reference](docs/commands.md) — every command, flag, and option
+- [TUI Dashboard](docs/tui.md) — interactive terminal UI reference
 - [Workflows & Examples](docs/workflows.md) — real-world usage patterns and recipes
 - [Configuration](docs/configuration.md) — config file, hooks, templates, environment variables
 

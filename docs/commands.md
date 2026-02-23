@@ -11,6 +11,8 @@ Global flags available on all commands:
 
 ## Overlay Lifecycle
 
+> **Interactive TUI:** Use `phantom manage` for a full-screen interactive dashboard. See the [TUI Dashboard](tui.md) guide for complete documentation.
+
 ### `phantom start <base-dir>`
 
 Create and mount a new overlay filesystem.
@@ -604,3 +606,22 @@ phantom completion powershell | Out-String | Invoke-Expression
 | `INVALID_CONFIG` | Configuration validation failed |
 | `OVERLAY_NOT_MOUNTED` | Overlay exists but is not mounted |
 | `OVERLAY_LOCKED` | Overlay is locked and cannot be cleaned up |
+
+---
+
+## `phantom manage`
+
+Open the interactive TUI management dashboard.
+
+```bash
+phantom manage
+phantom manage --theme amber
+```
+
+| Flag | Description |
+|------|-------------|
+| `--theme` | Initial color theme: `default`, `amber`, `blue`, `green`, `purple`, `light`, `plain` |
+
+The dashboard provides an interactive menu for all overlay and system operations, slash commands for quick access, and real-time log streaming when running agents.
+
+> See the **[TUI Dashboard guide](tui.md)** for the full reference including the menu tree, all slash commands, per-overlay actions, and agent run workflows.

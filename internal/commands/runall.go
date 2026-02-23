@@ -69,10 +69,6 @@ func NewRunAllCommand() *cli.Command {
 				Name:  "from",
 				Usage: "Start running from the agent with this name",
 			},
-			&cli.BoolFlag{
-				Name:  "tui",
-				Usage: "Enable interactive Terminal User Interface mode",
-			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -158,18 +154,16 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	useTui := cmd.GetBool("tui")
-
 	// If config specifies sequential mode, delegate to chain execution
 	if configPath != "" {
 		mode, chainName, chainBranch := getConfigMode(configPath)
 		if mode == "sequential" {
 			steps := agentsToChainSteps(agents)
-			return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, false, format, useTui)
+			return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, false, format)
 		}
 	}
 
-	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format, useTui)
+	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format)
 }
 
 func loadAgentsConfig(path string) ([]agentDef, error) {
@@ -247,7 +241,7 @@ func filterAgents(agents []agentDef, onlyAgent, fromAgent string) ([]agentDef, e
 	return agents, nil
 }
 
-func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string, useTui bool) error {
+func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string) error {
 	var results []agentResult
 
 	logic := func(childCtx context.Context, t *tui.TUI) error {
@@ -371,17 +365,11 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 		return nil
 	}
 
-	var err error
-	if useTui {
-		err = RunWithTUI(ctx, fmt.Sprintf("Phantom: Running %d agents", len(agents)), logic)
-	} else {
-		err = logic(ctx, nil)
-	}
-	if err != nil {
+	if err := logic(ctx, nil); err != nil {
 		return err
 	}
 
-	// Phase 4: Print summary OUTSIDE TUI lifecycle
+	// Phase 4: Print summary
 	return printRunAllSummary(results, format)
 }
 

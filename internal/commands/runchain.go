@@ -97,10 +97,6 @@ func NewRunChainCommand() *cli.Command {
 				Name:  "from",
 				Usage: "Start running from the step with this name",
 			},
-			&cli.BoolFlag{
-				Name:  "tui",
-				Usage: "Enable interactive Terminal User Interface mode",
-			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -176,9 +172,7 @@ func doRunChain(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	useTui := cmd.GetBool("tui")
-
-	return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, continueOnError, format, useTui)
+	return processRunChain(ctx, baseDir, chainName, chainBranch, steps, timeoutMinutes, doCleanup, doPush, continueOnError, format)
 }
 
 func loadChainConfig(path string) (*chainConfig, error) {
@@ -251,7 +245,7 @@ func filterSteps(steps []chainStep, onlyStep, fromStep string) ([]chainStep, err
 	return steps, nil
 }
 
-func processRunChain(ctx context.Context, baseDir, name, branch string, steps []chainStep, globalTimeout int, doCleanup, doPush, continueOnError bool, format string, useTui bool) error {
+func processRunChain(ctx context.Context, baseDir, name, branch string, steps []chainStep, globalTimeout int, doCleanup, doPush, continueOnError bool, format string) error {
 	var results []agentResult
 	stopped := false
 
@@ -396,17 +390,11 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 		return nil
 	}
 
-	var err error
-	if useTui {
-		err = RunWithTUI(ctx, fmt.Sprintf("Phantom: Chain %s", name), logic)
-	} else {
-		err = logic(ctx, nil)
-	}
-	if err != nil {
+	if err := logic(ctx, nil); err != nil {
 		return err
 	}
 
-	// Print summary (moved outside the TUI to prevent raw terminal shifts)
+	// Print summary
 	if err := printChainSummary(results, format, stopped); err != nil {
 		return err
 	}
