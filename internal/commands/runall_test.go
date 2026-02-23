@@ -122,3 +122,55 @@ func TestLoadAgentsConfig_InvalidYAML(t *testing.T) {
 		t.Error("expected error for invalid YAML")
 	}
 }
+
+func TestFilterAgents(t *testing.T) {
+	agents := []agentDef{
+		{Name: "agent1"},
+		{Name: "agent2"},
+		{Name: "agent3"},
+	}
+
+	// Test no filters
+	filtered, err := filterAgents(agents, "", "")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(filtered) != 3 {
+		t.Errorf("expected 3 agents, got %d", len(filtered))
+	}
+
+	// Test --only
+	filtered, err = filterAgents(agents, "agent2", "")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].Name != "agent2" {
+		t.Errorf("expected only agent2, got %v", filtered)
+	}
+
+	// Test --from
+	filtered, err = filterAgents(agents, "", "agent2")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(filtered) != 2 || filtered[0].Name != "agent2" {
+		t.Errorf("expected starting from agent2, got %v", filtered)
+	}
+
+	// Test missing name
+	_, err = filterAgents(agents, "missing", "")
+	if err == nil {
+		t.Errorf("expected error for missing agent in --only")
+	}
+
+	_, err = filterAgents(agents, "", "missing")
+	if err == nil {
+		t.Errorf("expected error for missing agent in --from")
+	}
+
+	// Test both flags
+	_, err = filterAgents(agents, "agent1", "agent2")
+	if err == nil {
+		t.Errorf("expected error for both flags")
+	}
+}

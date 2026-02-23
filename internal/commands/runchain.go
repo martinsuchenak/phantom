@@ -88,6 +88,14 @@ func NewRunChainCommand() *cli.Command {
 				Usage:   "Model to use (substituted as {model} in step agent commands; overrides per-step model)",
 				EnvVars: []string{"OVERLAY_MODEL"},
 			},
+			&cli.StringFlag{
+				Name:  "only",
+				Usage: "Run only the step with this name",
+			},
+			&cli.StringFlag{
+				Name:  "from",
+				Usage: "Start running from the step with this name",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -148,6 +156,14 @@ func doRunChain(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no steps defined")
 	}
 
+	onlyStep := cmd.GetString("only")
+	fromStep := cmd.GetString("from")
+
+	steps, err := filterSteps(steps, onlyStep, fromStep)
+	if err != nil {
+		return err
+	}
+
 	// Apply CLI model override to all steps
 	if modelOverride != "" {
 		for i := range steps {
@@ -191,6 +207,41 @@ func parseInlineSteps(inline string) []chainStep {
 		}
 	}
 	return steps
+}
+
+// filterSteps filters steps based on --only and --from flags
+func filterSteps(steps []chainStep, onlyStep, fromStep string) ([]chainStep, error) {
+	if onlyStep != "" && fromStep != "" {
+		return nil, fmt.Errorf("cannot use both --only and --from")
+	}
+
+	if onlyStep != "" {
+		var filtered []chainStep
+		for _, s := range steps {
+			if s.Name == onlyStep {
+				filtered = append(filtered, s)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("step %q not found in config", onlyStep)
+		}
+		return filtered, nil
+	} else if fromStep != "" {
+		found := false
+		for i, s := range steps {
+			if s.Name == fromStep {
+				steps = steps[i:]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("step %q not found in config", fromStep)
+		}
+		return steps, nil
+	}
+
+	return steps, nil
 }
 
 func processRunChain(ctx context.Context, baseDir, name, branch string, steps []chainStep, globalTimeout int, doCleanup, doPush, continueOnError bool, format string) error {

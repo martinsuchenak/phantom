@@ -137,6 +137,8 @@ phantom run-all ~/myproject --config agents.yaml --model claude-opus-4-5 --timeo
 | `--config, -c` | Path to agents YAML config file |
 | `--agents` | Comma-separated agent commands (simple mode) |
 | `--model, -m` | Model name — overrides `model:` in YAML for all agents. Optional. |
+| `--only` | Run only the agent with this name |
+| `--from` | Start running from the agent with this name (sequentially/overrides selection) |
 | `--timeout` | Global timeout per agent in minutes |
 | `--cleanup` | Cleanup all overlays after completion |
 | `--push` | Push branches to remote |
@@ -161,6 +163,8 @@ phantom run-chain ~/myproject --config chain.yaml --model claude-sonnet-4 --cont
 | `--name, -n` | Overlay name (auto-generated if omitted) |
 | `--branch, -b` | Git branch name |
 | `--model, -m` | Model name — overrides `model:` in YAML for all steps. Optional. |
+| `--only` | Run only the step with this name |
+| `--from` | Start running from the step with this name |
 | `--timeout` | Global timeout per step in minutes |
 | `--cleanup` | Cleanup overlay after completion |
 | `--push` | Push branch to remote on completion |

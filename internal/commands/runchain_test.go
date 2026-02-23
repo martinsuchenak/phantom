@@ -244,3 +244,55 @@ func TestProcessRunChain(t *testing.T) {
 		t.Fatalf("processRunChain failed: %v", err)
 	}
 }
+
+func TestFilterSteps(t *testing.T) {
+	steps := []chainStep{
+		{Name: "step1"},
+		{Name: "step2"},
+		{Name: "step3"},
+	}
+
+	// Test no filters
+	filtered, err := filterSteps(steps, "", "")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(filtered) != 3 {
+		t.Errorf("expected 3 steps, got %d", len(filtered))
+	}
+
+	// Test --only
+	filtered, err = filterSteps(steps, "step2", "")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].Name != "step2" {
+		t.Errorf("expected only step2, got %v", filtered)
+	}
+
+	// Test --from
+	filtered, err = filterSteps(steps, "", "step2")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(filtered) != 2 || filtered[0].Name != "step2" {
+		t.Errorf("expected starting from step2, got %v", filtered)
+	}
+
+	// Test missing name
+	_, err = filterSteps(steps, "missing", "")
+	if err == nil {
+		t.Errorf("expected error for missing step in --only")
+	}
+
+	_, err = filterSteps(steps, "", "missing")
+	if err == nil {
+		t.Errorf("expected error for missing step in --from")
+	}
+
+	// Test both flags
+	_, err = filterSteps(steps, "step1", "step2")
+	if err == nil {
+		t.Errorf("expected error for both flags")
+	}
+}

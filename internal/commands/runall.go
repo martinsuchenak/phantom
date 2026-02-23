@@ -60,6 +60,14 @@ func NewRunAllCommand() *cli.Command {
 				Usage:   "Model to use (substituted as {model} in agent commands; overrides per-agent model)",
 				EnvVars: []string{"OVERLAY_MODEL"},
 			},
+			&cli.StringFlag{
+				Name:  "only",
+				Usage: "Run only the agent with this name",
+			},
+			&cli.StringFlag{
+				Name:  "from",
+				Usage: "Start running from the agent with this name",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -130,6 +138,14 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no agents defined")
 	}
 
+	onlyAgent := cmd.GetString("only")
+	fromAgent := cmd.GetString("from")
+
+	agents, err = filterAgents(agents, onlyAgent, fromAgent)
+	if err != nil {
+		return err
+	}
+
 	// Apply CLI model override to all agents
 	if modelOverride != "" {
 		for i := range agents {
@@ -187,6 +203,41 @@ func parseInlineAgents(inline string) []agentDef {
 		})
 	}
 	return agents
+}
+
+// filterAgents filters agents based on --only and --from flags
+func filterAgents(agents []agentDef, onlyAgent, fromAgent string) ([]agentDef, error) {
+	if onlyAgent != "" && fromAgent != "" {
+		return nil, fmt.Errorf("cannot use both --only and --from")
+	}
+
+	if onlyAgent != "" {
+		var filtered []agentDef
+		for _, a := range agents {
+			if a.Name == onlyAgent {
+				filtered = append(filtered, a)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil, fmt.Errorf("agent %q not found in config", onlyAgent)
+		}
+		return filtered, nil
+	} else if fromAgent != "" {
+		found := false
+		for i, a := range agents {
+			if a.Name == fromAgent {
+				agents = agents[i:]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("agent %q not found in config", fromAgent)
+		}
+		return agents, nil
+	}
+
+	return agents, nil
 }
 
 func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string) error {
