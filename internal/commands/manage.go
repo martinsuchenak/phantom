@@ -16,6 +16,37 @@ import (
 	"github.com/paularlott/cli/tui"
 )
 
+// makeBanner builds the phantom/ghost splash shown at TUI startup.
+// Ghost art by user request; includes version and working directory.
+func makeBanner() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "unknown"
+	}
+	const maxCwd = 50
+	if len(cwd) > maxCwd {
+		cwd = "..." + cwd[len(cwd)-(maxCwd-3):]
+	}
+	return "\n\n" +
+		"  ╭───────────────────────────────────────────────────────────╮\n" +
+		"  │                                                           │\n" +
+		"  │       .-.                                                 │\n" +
+		"  │     .'   `.             P H A N T O M                     │\n" +
+		"  │     :O O   :                                              │\n" +
+		"  │     : o    `.           AI Overlay Manager                │\n" +
+		"  │    :         `.         for parallel AI agents            │\n" +
+		"  │   :   :     .  `.                                         │\n" +
+		"  │    `..:        `.;      arrows   navigate                 │\n" +
+		"  │       `'`'---..,__`.-'  enter    select                   │\n" +
+		"  │                         esc      go back                  │\n" +
+		"  │                         /menu    menu.                    │\n" +
+		"  │                                                           │\n" +
+		fmt.Sprintf("  │  version:   %-46s│\n", version) +
+		fmt.Sprintf("  │  directory: %-46s│\n", cwd) +
+		"  │                                                           │\n" +
+		"  ╰───────────────────────────────────────────────────────────╯"
+}
+
 func NewManageCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "manage",
@@ -167,11 +198,7 @@ func RunInteractiveManage(ctx context.Context, mgr overlayManager, store *state.
 		},
 	})
 
-	t.AddMessage(tui.RoleSystem,
-		"Welcome to Phantom Management Dashboard.\n"+
-			"Use ↑/↓ and Enter to navigate the menu, Esc to go back.\n"+
-			"Type /help for slash commands or /exit to quit.",
-	)
+	t.AddMessage(tui.RoleSystem, makeBanner())
 
 	// Auto-open the menu immediately
 	openMainMenu(ctx, t, mgr, store)
