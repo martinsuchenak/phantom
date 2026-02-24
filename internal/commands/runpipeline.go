@@ -556,6 +556,7 @@ Once the conflict is resolved, proceed to your actual task.
 			progressStr := fmt.Sprintf("[%d/%d]", started, len(pc.Agents))
 
 			pt.Update(ag.Name, StateRunning)
+			pt.Logf("[%s] Running: %s", ag.Name, ag.Agent)
 			result := runSingleAgent(ctx, agToRun, ovl, absBaseDir, globalTimeout, doPush, nil, progressStr)
 
 			limiter.Release(agToRun.Agent)

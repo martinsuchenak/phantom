@@ -47,7 +47,7 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 		prefix = fmt.Sprintf("\033[36m%s\033[0m %s", opts.Progress, prefix)
 	}
 
-	r.log.Info("%s Starting agent: %s", prefix, opts.Agent)
+	r.log.Debug("%s Starting agent: %s", prefix, opts.Agent)
 	r.log.Debug("%s Task: %s", prefix, opts.Task)
 	r.log.Debug("%s Overlay: %s", prefix, ovl.MountPoint)
 
