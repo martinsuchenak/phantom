@@ -170,12 +170,7 @@ func (pt *ProgressTree) render() {
 	outStr := strings.Join(output, "\n")
 	fmt.Print(outStr)
 
-	pt.lines = len(output) // The number of lines written by strings.Join + 1 for print?
-	// strings.Join(output, "\n") has len(output)-1 newlines, so it spans len(output) lines of cursor movement.
-	// Oh wait, because I print it, there is no trailing newline automatically added unless fmt.Println is used.
-	// We used fmt.Print, so the cursor is on the last empty line.
-	// To correctly move UP, moving up `len(output) - 1` times.
-	pt.lines = len(output) - 1
+	pt.lines = strings.Count(outStr, "\n")
 }
 
 // Clear removes the progress tree from screen
