@@ -140,6 +140,13 @@ func applyGit(ctx context.Context, ovl *api.Overlay, gitOps *git.Operations, dry
 		return nil
 	}
 
+	// Fetch the branch carefully from the overlay to ensure refs exist
+	log.Debug("Fetching branch %q from overlay", ovl.Branch)
+	fetchRef := fmt.Sprintf("%s:%s", ovl.Branch, ovl.Branch)
+	if err := gitOps.FetchFrom(ctx, ovl.BaseDir, ovl.MountPoint, fetchRef); err != nil {
+		return fmt.Errorf("failed to fetch branch from overlay: %w", err)
+	}
+
 	// Merge the overlay branch into the base
 	log.Debug("Merging %q into %q", ovl.Branch, baseBranch)
 	if err := gitOps.MergeBranch(ctx, ovl.BaseDir, ovl.Branch); err != nil {
