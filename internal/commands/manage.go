@@ -488,6 +488,24 @@ func openMainMenu(ctx context.Context, t *tui.TUI, mgr overlayManager, store *st
 							go runTUIRunChain(ctx, t, parts[0], parts[1], model)
 						},
 					},
+					// ── Run-pipeline ──────────────────────────────────────
+					{
+						Label:  "Run-Pipeline  (DAG agents from config)",
+						Prompt: "Enter: base-dir  config.yaml  [--model name]",
+						OnSelect: func(_ *tui.MenuItem, input string) {
+							model := ""
+							if idx := strings.Index(input, "--model "); idx != -1 {
+								model = strings.Fields(input[idx+8:])[0]
+								input = strings.TrimSpace(input[:idx])
+							}
+							parts := strings.Fields(strings.TrimSpace(input))
+							if len(parts) < 2 {
+								t.AddMessage(tui.RoleSystem, "Need: base-dir  config.yaml")
+								return
+							}
+							go runTUIRunPipeline(ctx, t, parts[0], parts[1], model)
+						},
+					},
 				},
 			},
 			{Label: fmt.Sprintf("Overlays  (%d)", len(ovls)), Children: ovlItems},
@@ -1612,6 +1630,41 @@ func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath, model st
 
 // runTUIRunChain loads a chain config file and runs steps sequentially.
 // model is an optional global model override (empty = use per-step config).
+func runTUIRunPipeline(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
+	t.StartSpinner(fmt.Sprintf("Loading pipeline from %s…", configPath))
+	pc, err := loadPipelineConfig(configPath)
+	t.StopSpinner()
+	if err != nil {
+		t.AddMessage(tui.RoleSystem, "run-pipeline: failed to load config: "+err.Error())
+		return
+	}
+	if len(pc.Agents) == 0 {
+		t.AddMessage(tui.RoleSystem, "run-pipeline: no agents defined in config.")
+		return
+	}
+	if model != "" {
+		for i := range pc.Agents {
+			if pc.Agents[i].Model == "" {
+				pc.Agents[i].Model = model
+			}
+		}
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Running pipeline %q (%d agent(s)) with model %q…", pc.Name, len(pc.Agents), model))
+	} else {
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Running pipeline %q (%d agent(s))…", pc.Name, len(pc.Agents)))
+	}
+
+	oldLog := log
+	log = &tuiLogger{t: t}
+	err = processRunPipeline(ctx, baseDir, pc, 0, 0, false, false, "table")
+	log = oldLog
+
+	if err != nil {
+		t.AddMessage(tui.RoleSystem, "run-pipeline failed: "+err.Error())
+	} else {
+		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Pipeline %q complete.", pc.Name))
+	}
+}
+
 func runTUIRunChain(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
 	t.StartSpinner(fmt.Sprintf("Loading chain from %s…", configPath))
 	chainCfg, err := loadChainConfig(configPath)

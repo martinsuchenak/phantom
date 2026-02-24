@@ -401,10 +401,10 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 		return err
 	}
 
-	// Exit with error if any step failed
+	// Return an error so the CLI framework exits with a non-zero code
 	for _, r := range results {
 		if r.ExitCode != 0 || r.Error != "" {
-			os.Exit(1)
+			return fmt.Errorf("one or more chain steps failed")
 		}
 	}
 

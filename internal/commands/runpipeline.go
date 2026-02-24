@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
+	"text/template"
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/git"
@@ -79,8 +79,12 @@ func NewRunPipelineCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:    "model",
 				Aliases: []string{"m"},
-				Usage:   "Model to use (substituted as {model} in agent commands; overrides per-agent model)",
+				Usage:   "Model to use for agents with no model set (overrides per-agent model only when --model-override is also set)",
 				EnvVars: []string{"OVERLAY_MODEL"},
+			},
+			&cli.BoolFlag{
+				Name:  "model-override",
+				Usage: "Force --model onto all agents, replacing any per-agent model",
 			},
 			&cli.StringFlag{
 				Name:  "only",
@@ -88,7 +92,7 @@ func NewRunPipelineCommand() *cli.Command {
 			},
 			&cli.StringFlag{
 				Name:  "from",
-				Usage: "Resume from the specified agent",
+				Usage: "Resume from the specified agent (skipped agents must have existing state)",
 			},
 		},
 		Arguments: []cli.Argument{
@@ -112,6 +116,7 @@ func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 	doPush := cmd.GetBool("push")
 	format := cmd.GetString("format")
 	modelOverride := cmd.GetString("model")
+	forceModelOverride := cmd.GetBool("model-override")
 	onlyAgent := cmd.GetString("only")
 	fromAgent := cmd.GetString("from")
 
@@ -141,17 +146,21 @@ func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 		pc.Name = fmt.Sprintf("pipeline-%d", time.Now().Unix())
 	}
 
-	// Apply CLI model override
+	// Apply model: --model-override replaces all; otherwise only fill in agents with no model set.
 	if modelOverride != "" {
 		for i := range pc.Agents {
-			pc.Agents[i].Model = modelOverride
+			if forceModelOverride || pc.Agents[i].Model == "" {
+				pc.Agents[i].Model = modelOverride
+			}
 		}
 	}
 
 	return processRunPipeline(ctx, baseDir, pc, timeoutMinutes, concurrency, doCleanup, doPush, format)
 }
 
-// filterPipelineAgents filters agents based on --only and --from flags, and prunes missing dependencies
+// filterPipelineAgents filters agents based on --only and --from flags.
+// Skipped agents (--from) have their DependsOn pruned to only include other
+// skipped agents, so the DAG wait logic stays consistent.
 func filterPipelineAgents(agents []pipelineAgent, onlyAgent, fromAgent string) ([]pipelineAgent, error) {
 	if onlyAgent != "" && fromAgent != "" {
 		return nil, fmt.Errorf("cannot use both --only and --from")
@@ -162,6 +171,8 @@ func filterPipelineAgents(agents []pipelineAgent, onlyAgent, fromAgent string) (
 		for i, a := range agents {
 			if a.Name == onlyAgent {
 				found = true
+				// Clear dependencies — running a single agent in isolation
+				agents[i].DependsOn = nil
 			} else {
 				agents[i].skip = true
 			}
@@ -169,22 +180,85 @@ func filterPipelineAgents(agents []pipelineAgent, onlyAgent, fromAgent string) (
 		if !found {
 			return nil, fmt.Errorf("agent %q not found in pipeline config", onlyAgent)
 		}
-	} else if fromAgent != "" {
+		return agents, nil
+	}
+
+	if fromAgent != "" {
 		found := false
+		skipSet := make(map[string]bool)
 		for i, a := range agents {
 			if a.Name == fromAgent {
 				found = true
 			}
 			if !found {
 				agents[i].skip = true
+				skipSet[a.Name] = true
 			}
 		}
 		if !found {
 			return nil, fmt.Errorf("agent %q not found in pipeline config", fromAgent)
 		}
+		// Prune dependencies that point at skipped agents from non-skipped agents.
+		// The skipped agents will recover their state from the store; non-skipped
+		// agents must not wait on them via the normal dependency channel.
+		for i := range agents {
+			if agents[i].skip {
+				continue
+			}
+			var pruned []string
+			for _, dep := range agents[i].DependsOn {
+				if !skipSet[dep] {
+					pruned = append(pruned, dep)
+				}
+			}
+			agents[i].DependsOn = pruned
+		}
+		return agents, nil
 	}
 
 	return agents, nil
+}
+
+// detectCycle returns an error if the agent dependency graph contains a cycle.
+func detectCycle(agents []pipelineAgent) error {
+	// Build adjacency list (only non-skipped agents participate in live DAG)
+	deps := make(map[string][]string, len(agents))
+	for _, a := range agents {
+		deps[a.Name] = a.DependsOn
+	}
+
+	// Standard DFS-based cycle detection
+	const (
+		unvisited = 0
+		visiting  = 1
+		visited   = 2
+	)
+	state := make(map[string]int, len(agents))
+
+	var visit func(name string, path []string) error
+	visit = func(name string, path []string) error {
+		switch state[name] {
+		case visited:
+			return nil
+		case visiting:
+			return fmt.Errorf("circular dependency detected: %s", strings.Join(append(path, name), " → "))
+		}
+		state[name] = visiting
+		for _, dep := range deps[name] {
+			if err := visit(dep, append(path, name)); err != nil {
+				return err
+			}
+		}
+		state[name] = visited
+		return nil
+	}
+
+	for _, a := range agents {
+		if err := visit(a.Name, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadPipelineConfig(path string) (*pipelineConfig, error) {
@@ -216,10 +290,50 @@ type pipelineDepResult struct {
 	MountPoint string
 }
 
+// conflictInjectionTmpl is the template used to prepend conflict-resolution
+// instructions to an agent's task. Using text/template avoids the risk of
+// the original task text containing the literal placeholder strings.
+var conflictInjectionTmpl = template.Must(template.New("conflict").Parse(`[SYSTEM INJECTION]
+You have been assigned to complete the following task: "{{.OriginalTask}}"
+HOWEVER, the previous tasks resulted in git merge conflicts in the following files:
+{{.ConflictList}}
+Your IMMEDIATE PRIORITY is to resolve these merge conflicts.
+1. Open the conflicted files. You will see standard <<<<<<< HEAD git conflict markers.
+2. Edit the files to correctly synthesize the changes.
+3. Remove all conflict markers.
+4. Run ` + "`git add`" + ` and ` + "`git commit`" + ` to finalize the merge.
+
+If you are unable to safely resolve the conflict, or you do not understand the intention of the conflicting code, you MUST return a non-zero exit code or use a designated phantom command to abort the pipeline. Do NOT commit broken code.
+
+Once the conflict is resolved, proceed to your actual task.
+[END INJECTION]
+`))
+
+func buildConflictTask(originalTask string, conflictFiles []string) (string, error) {
+	list := ""
+	for _, f := range conflictFiles {
+		list += "- " + f + "\n"
+	}
+	var buf strings.Builder
+	err := conflictInjectionTmpl.Execute(&buf, struct {
+		OriginalTask string
+		ConflictList string
+	}{originalTask, list})
+	if err != nil {
+		return "", fmt.Errorf("failed to render conflict injection template: %w", err)
+	}
+	return buf.String(), nil
+}
+
 func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig, globalTimeout, concurrency int, doCleanup, doPush bool, format string) error {
 	absBaseDir, err := filepath.Abs(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve base directory: %w", err)
+	}
+
+	// Validate DAG before launching any goroutines
+	if err := detectCycle(pc.Agents); err != nil {
+		return err
 	}
 
 	runAutoCleanup()
@@ -247,28 +361,26 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 		return fmt.Errorf("failed to check repository status: %w", err)
 	}
 	if hasChanges {
-		return fmt.Errorf("run-pipeline requires a clean working tree. Please commit or stash your changes before running.")
+		return fmt.Errorf("run-pipeline requires a clean working tree. Please commit or stash your changes before running")
 	}
 
+	// Resolve base branch: config > auto-branch > current branch (no hardcoded fallback)
 	baseBranch := pc.Branch
 	if baseBranch == "" && cfg.Git.AutoBranch {
 		baseBranch = cfg.Git.BranchPrefix + pc.Name
 	}
 	if baseBranch == "" {
 		currentBranch, err := gitOps.GetCurrentBranch(ctx, absBaseDir)
-		if err == nil {
-			baseBranch = currentBranch
-		} else {
-			baseBranch = "main" // fallback
+		if err != nil {
+			return fmt.Errorf("failed to determine current branch: %w", err)
 		}
+		baseBranch = currentBranch
 	}
 
-	if baseBranch != "" {
-		exists, _ := gitOps.BranchExists(ctx, absBaseDir, baseBranch)
-		if !exists {
-			if err := gitOps.CreateBranch(ctx, absBaseDir, baseBranch, ""); err != nil {
-				return fmt.Errorf("failed to create base branch %q: %w", baseBranch, err)
-			}
+	exists, _ := gitOps.BranchExists(ctx, absBaseDir, baseBranch)
+	if !exists {
+		if err := gitOps.CreateBranch(ctx, absBaseDir, baseBranch, ""); err != nil {
+			return fmt.Errorf("failed to create base branch %q: %w", baseBranch, err)
 		}
 	}
 
@@ -281,7 +393,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 		doneChans[a.Name] = make(chan struct{})
 	}
 
-	// Ensure no unknown dependencies
+	// Validate all dependency names exist in the agent map
 	for _, a := range pc.Agents {
 		for _, depName := range a.DependsOn {
 			if _, exists := agentMap[depName]; !exists {
@@ -291,9 +403,13 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 	}
 
 	var wg sync.WaitGroup
-	var startedAgents atomic.Int32
 	agentResults := make([]agentResult, len(pc.Agents))
 	var resultsMu sync.Mutex
+
+	// runningCount tracks agents that have actually started executing (past the
+	// queue/wait phase) so the progress string is accurate.
+	var runningMu sync.Mutex
+	runningCount := 0
 
 	limiter := NewAgentLimiter(concurrency)
 	pt := NewProgressTree(pc.Agents)
@@ -316,16 +432,14 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 					if ok {
 						res := val.(pipelineDepResult)
 						if res.Err != nil {
-							// Dependency failed
-							err := fmt.Errorf("dependency %q failed: %w", depName, res.Err)
-							results.Store(ag.Name, pipelineDepResult{Err: err})
-
+							depErr := fmt.Errorf("dependency %q failed: %w", depName, res.Err)
+							results.Store(ag.Name, pipelineDepResult{Err: depErr})
 							resultsMu.Lock()
 							agentResults[idx] = agentResult{
 								Name:     ag.Name,
 								Agent:    ag.Agent,
 								ExitCode: 1,
-								Error:    err.Error(),
+								Error:    depErr.Error(),
 							}
 							resultsMu.Unlock()
 							return
@@ -344,21 +458,24 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 			if ag.skip {
 				pt.Logf("[%s] \033[33mSKIPPED\033[0m: Recovering state...", ag.Name)
 				if store.Exists(ovlName) {
-					if ovl, err := store.Load(ovlName); err == nil {
+					ovl, loadErr := store.Load(ovlName)
+					if loadErr == nil {
 						results.Store(ag.Name, pipelineDepResult{
 							Branch:     branchName,
 							MountPoint: ovl.MountPoint,
 						})
 					} else {
-						err = fmt.Errorf("failed to load existing overlay %q: %v", ovlName, err)
-						results.Store(ag.Name, pipelineDepResult{Err: err})
+						skipErr := fmt.Errorf("failed to load existing overlay %q: %w", ovlName, loadErr)
+						results.Store(ag.Name, pipelineDepResult{Err: skipErr})
+						pt.Errorf("[%s] %v", ag.Name, skipErr)
 					}
 				} else {
-					err := fmt.Errorf("state not found for skipped agent %q (dependency branch is missing)", ag.Name)
-					results.Store(ag.Name, pipelineDepResult{Err: err})
+					skipErr := fmt.Errorf("no saved state for skipped agent %q — run without --from to execute it first", ag.Name)
+					results.Store(ag.Name, pipelineDepResult{Err: skipErr})
+					pt.Errorf("[%s] %v", ag.Name, skipErr)
 				}
 				resultsMu.Lock()
-				agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 0, Error: ""}
+				agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: -1}
 				resultsMu.Unlock()
 				return
 			}
@@ -369,7 +486,6 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 				Branch:  branchName,
 			}
 
-			// If we have dependencies, create the new branch from baseBranch, then merge dependency branches into it
 			var ovl *api.Overlay
 			pt.Update(ag.Name, StateStarting)
 			if store.Exists(opts.Name) {
@@ -377,21 +493,23 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 				var loadErr error
 				ovl, loadErr = store.Load(opts.Name)
 				if loadErr != nil {
-					err = fmt.Errorf("failed to load existing overlay %q: %w", opts.Name, loadErr)
-					results.Store(ag.Name, pipelineDepResult{Err: err})
+					agErr := fmt.Errorf("failed to load existing overlay %q: %w", opts.Name, loadErr)
+					results.Store(ag.Name, pipelineDepResult{Err: agErr})
 					resultsMu.Lock()
-					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: agErr.Error()}
 					resultsMu.Unlock()
+					pt.Update(ag.Name, StateFailed)
 					return
 				}
 				mounted, _ := mgr.IsMounted(ovl)
 				if !mounted {
 					if mountErr := mgr.Mount(ovl); mountErr != nil {
-						err = fmt.Errorf("failed to mount existing overlay %q: %w", opts.Name, mountErr)
-						results.Store(ag.Name, pipelineDepResult{Err: err})
+						agErr := fmt.Errorf("failed to mount existing overlay %q: %w", opts.Name, mountErr)
+						results.Store(ag.Name, pipelineDepResult{Err: agErr})
 						resultsMu.Lock()
-						agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+						agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: agErr.Error()}
 						resultsMu.Unlock()
+						pt.Update(ag.Name, StateFailed)
 						return
 					}
 				}
@@ -399,21 +517,23 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 				var createErr error
 				ovl, createErr = mgr.Create(opts)
 				if createErr != nil {
-					err = fmt.Errorf("failed to create overlay: %w", createErr)
-					results.Store(ag.Name, pipelineDepResult{Err: err})
+					agErr := fmt.Errorf("failed to create overlay: %w", createErr)
+					results.Store(ag.Name, pipelineDepResult{Err: agErr})
 					resultsMu.Lock()
-					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: agErr.Error()}
 					resultsMu.Unlock()
+					pt.Update(ag.Name, StateFailed)
 					return
 				}
 
 				if saveErr := store.Save(ovl); saveErr != nil {
 					mgr.Cleanup(ovl)
-					err = fmt.Errorf("failed to save overlay: %w", saveErr)
-					results.Store(ag.Name, pipelineDepResult{Err: err})
+					agErr := fmt.Errorf("failed to save overlay: %w", saveErr)
+					results.Store(ag.Name, pipelineDepResult{Err: agErr})
 					resultsMu.Lock()
-					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: agErr.Error()}
 					resultsMu.Unlock()
+					pt.Update(ag.Name, StateFailed)
 					return
 				}
 			}
@@ -422,20 +542,29 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 				if doCleanup {
 					mgr.Cleanup(ovl)
 					store.Delete(ovlName)
-				} else {
-					if ovl.PID > 0 {
-						ovl.PID = 0
-						store.Save(ovl)
-					}
+				} else if ovl.PID > 0 {
+					ovl.PID = 0
+					store.Save(ovl)
 				}
 			}()
 
-			// Wait for FUSE to fully mount and expose the base directory (esp. .git)
+			// Wait for FUSE to fully mount. We poll for the mount point itself
+			// becoming accessible rather than specifically for .git, so this
+			// works for non-git directories and git worktrees too.
 			for i := 0; i < 50; i++ {
-				if _, err := os.Stat(filepath.Join(ovl.MountPoint, ".git")); err == nil {
-					break // .git is visible!
+				if _, statErr := os.Stat(ovl.MountPoint); statErr == nil {
+					break
 				}
 				time.Sleep(100 * time.Millisecond)
+			}
+			if _, statErr := os.Stat(ovl.MountPoint); statErr != nil {
+				agErr := fmt.Errorf("overlay mount point %q did not become accessible: %w", ovl.MountPoint, statErr)
+				results.Store(ag.Name, pipelineDepResult{Err: agErr})
+				resultsMu.Lock()
+				agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: agErr.Error()}
+				resultsMu.Unlock()
+				pt.Update(ag.Name, StateFailed)
+				return
 			}
 
 			// Git checkout to new branch from base branch
@@ -454,89 +583,64 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 
 			// 3. Merge dependency branches
 			var mergeConflictFiles []string
-			if len(ag.DependsOn) > 0 {
-				for _, depName := range ag.DependsOn {
-					val, _ := results.Load(depName)
-					depRes := val.(pipelineDepResult)
-					if depRes.Branch != "" && depRes.MountPoint != "" {
-						pt.Update(ag.Name, StateFetching)
-						pt.Logf("[%s] Fetching dependency %q", ag.Name, depName)
-						fetchErr := gitOps.FetchFrom(ctx, ovl.MountPoint, depRes.MountPoint, depRes.Branch)
-						if fetchErr != nil {
-							err := fmt.Errorf("failed to fetch from dependency %s: %w", depName, fetchErr)
-							pt.Errorf("[%s] git fetch error: %v", ag.Name, err)
-							results.Store(ag.Name, pipelineDepResult{Err: err})
-							resultsMu.Lock()
-							agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
-							resultsMu.Unlock()
-							pt.Update(ag.Name, StateFailed)
-							return
-						}
+			for _, depName := range ag.DependsOn {
+				val, _ := results.Load(depName)
+				depRes := val.(pipelineDepResult)
+				if depRes.Branch == "" || depRes.MountPoint == "" {
+					continue
+				}
 
-						pt.Update(ag.Name, StateMerging)
-						pt.Logf("[%s] Merging dependency %q", ag.Name, depName)
-						err := gitOps.MergeBranchNoEdit(ctx, ovl.MountPoint, "FETCH_HEAD")
-						if err != nil {
-							// If there's a conflict, err might be non-nil. Check unmerged files.
-							unmerged, unmergedErr := gitOps.GetUnmergedFiles(ctx, ovl.MountPoint)
-							if unmergedErr != nil {
-								// Unexpected git error while checking status
-								results.Store(ag.Name, pipelineDepResult{Err: err})
-								resultsMu.Lock()
-								agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
-								resultsMu.Unlock()
-								pt.Update(ag.Name, StateFailed)
-								return
-							} else if len(unmerged) > 0 {
-								// Conflict recorded
-								mergeConflictFiles = append(mergeConflictFiles, unmerged...)
-							} else {
-								// Real error merging, abort.
-								results.Store(ag.Name, pipelineDepResult{Err: err})
-								resultsMu.Lock()
-								agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
-								resultsMu.Unlock()
-								pt.Update(ag.Name, StateFailed)
-								return
-							}
-						}
+				pt.Update(ag.Name, StateFetching)
+				pt.Logf("[%s] Fetching dependency %q", ag.Name, depName)
+				if fetchErr := gitOps.FetchFrom(ctx, ovl.MountPoint, depRes.MountPoint, depRes.Branch); fetchErr != nil {
+					agErr := fmt.Errorf("failed to fetch from dependency %s: %w", depName, fetchErr)
+					pt.Errorf("[%s] git fetch error: %v", ag.Name, agErr)
+					results.Store(ag.Name, pipelineDepResult{Err: agErr})
+					resultsMu.Lock()
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: agErr.Error()}
+					resultsMu.Unlock()
+					pt.Update(ag.Name, StateFailed)
+					return
+				}
+
+				pt.Update(ag.Name, StateMerging)
+				pt.Logf("[%s] Merging dependency %q", ag.Name, depName)
+				mergeErr := gitOps.MergeBranchNoEdit(ctx, ovl.MountPoint, "FETCH_HEAD")
+				if mergeErr != nil {
+					unmerged, unmergedErr := gitOps.GetUnmergedFiles(ctx, ovl.MountPoint)
+					if unmergedErr != nil {
+						results.Store(ag.Name, pipelineDepResult{Err: mergeErr})
+						resultsMu.Lock()
+						agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: mergeErr.Error()}
+						resultsMu.Unlock()
+						pt.Update(ag.Name, StateFailed)
+						return
+					} else if len(unmerged) > 0 {
+						mergeConflictFiles = append(mergeConflictFiles, unmerged...)
+					} else {
+						results.Store(ag.Name, pipelineDepResult{Err: mergeErr})
+						resultsMu.Lock()
+						agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: mergeErr.Error()}
+						resultsMu.Unlock()
+						pt.Update(ag.Name, StateFailed)
+						return
 					}
 				}
 			}
 
-			// In case of duplicate conflicts
 			mergeConflictFiles = uniqueStrings(mergeConflictFiles)
 
-			// 4. Run Agent
-			var finalTask string = ag.Task
-
+			// 4. Build task, injecting conflict resolution instructions if needed
+			finalTask := ag.Task
 			if len(mergeConflictFiles) > 0 {
-				// Inject the specialized prompt
-				injection := `
-[SYSTEM INJECTION]
-You have been assigned to complete the following task: "{original_task}"
-HOWEVER, the previous tasks resulted in git merge conflicts in the following files:
-{conflicted_files}
-
-Your IMMEDIATE PRIORITY is to resolve these merge conflicts.
-1. Open the conflicted files. You will see standard ` + "`<<<<<<< HEAD`" + ` git conflict markers.
-2. Edit the files to correctly synthesize the changes.
-3. Remove all conflict markers.
-4. Run ` + "`git add`" + ` and ` + "`git commit`" + ` to finalize the merge.
-
-If you are unable to safely resolve the conflict, or you do not understand the intention of the conflicting code, you MUST return a non-zero exit code or use a designated phantom command to abort the pipeline. Do NOT commit broken code.
-
-Once the conflict is resolved, proceed to your actual task.
-[END INJECTION]
-`
-				finalTask = strings.Replace(injection, "{original_task}", ag.Task, 1)
-				conflictList := ""
-				for _, f := range mergeConflictFiles {
-					conflictList += "- " + f + "\n"
-				}
-				finalTask = strings.Replace(finalTask, "{conflicted_files}", conflictList, 1)
-
 				pt.Logf("[%s] \033[33mFound merge conflicts! Injecting resolution prompt.\033[0m", ag.Name)
+				injected, tmplErr := buildConflictTask(ag.Task, mergeConflictFiles)
+				if tmplErr != nil {
+					pt.Errorf("[%s] %v", ag.Name, tmplErr)
+					// Fall back to original task rather than aborting
+				} else {
+					finalTask = injected
+				}
 			}
 
 			agToRun := agentDef{
@@ -548,12 +652,16 @@ Once the conflict is resolved, proceed to your actual task.
 				Timeout: ag.Timeout,
 			}
 
-			// Wait for concurrency token
+			// Wait for concurrency token, then record the running count only
+			// after the token is acquired so the progress string reflects agents
+			// that are actually executing.
 			pt.Update(ag.Name, StateQueued)
 			limiter.Acquire(agToRun.Agent)
 
-			started := startedAgents.Add(1)
-			progressStr := fmt.Sprintf("[%d/%d]", started, len(pc.Agents))
+			runningMu.Lock()
+			runningCount++
+			progressStr := fmt.Sprintf("[%d/%d]", runningCount, len(pc.Agents))
+			runningMu.Unlock()
 
 			pt.Update(ag.Name, StateRunning)
 			pt.Logf("[%s] Running: %s", ag.Name, ag.Agent)
@@ -561,20 +669,27 @@ Once the conflict is resolved, proceed to your actual task.
 
 			limiter.Release(agToRun.Agent)
 
-			// Auto-commit so that dependent agents can fetch these changes
+			// Auto-commit uncommitted changes so dependent agents can fetch them.
+			// Log but do not swallow commit errors — a failed commit means
+			// downstream fetches will silently get stale data.
 			if result.ExitCode == 0 {
-				hasChanges, err := gitOps.HasUncommittedChanges(ctx, ovl.MountPoint)
-				if err == nil && hasChanges {
-					gitOps.CommitAll(ctx, ovl.MountPoint, fmt.Sprintf("phantom pipeline: %s completed", ag.Name))
+				uncommitted, checkErr := gitOps.HasUncommittedChanges(ctx, ovl.MountPoint)
+				if checkErr != nil {
+					pt.Errorf("[%s] Failed to check for uncommitted changes: %v", ag.Name, checkErr)
+				} else if uncommitted {
+					commitMsg := fmt.Sprintf("phantom pipeline: %s completed", ag.Name)
+					if commitErr := gitOps.CommitAll(ctx, ovl.MountPoint, commitMsg); commitErr != nil {
+						pt.Errorf("[%s] Auto-commit failed; dependent agents may fetch stale state: %v", ag.Name, commitErr)
+					}
 				}
 			}
 
-			// Failsafe: check unresolved conflicts after completion
+			// Failsafe: reject success if conflict markers remain
 			if result.ExitCode == 0 {
 				unmerged, _ := gitOps.GetUnmergedFiles(ctx, ovl.MountPoint)
 				if len(unmerged) > 0 {
 					result.ExitCode = 1
-					result.Error = fmt.Sprintf("failed failsafe: %d files still contain conflict markers (e.g., %s)", len(unmerged), unmerged[0])
+					result.Error = fmt.Sprintf("failsafe: %d file(s) still contain conflict markers (e.g., %s)", len(unmerged), unmerged[0])
 					pt.Errorf("[%s] Pipeline failsafe triggered: unresolved conflicts remained.", ag.Name)
 				}
 			}
@@ -587,25 +702,39 @@ Once the conflict is resolved, proceed to your actual task.
 				results.Store(ag.Name, pipelineDepResult{Branch: branchName, MountPoint: ovl.MountPoint})
 				pt.Update(ag.Name, StateDone)
 			} else {
-				err := fmt.Errorf("agent %q failed with exit code %d: %s", ag.Name, result.ExitCode, result.Error)
-				results.Store(ag.Name, pipelineDepResult{Err: err})
+				agErr := fmt.Errorf("agent %q failed with exit code %d: %s", ag.Name, result.ExitCode, result.Error)
+				results.Store(ag.Name, pipelineDepResult{Err: agErr})
 				pt.Update(ag.Name, StateFailed)
 			}
 		}(idx, a)
 	}
 
-	// Wait for all agents to complete
 	wg.Wait()
 	pt.Clear()
 
-	return printRunAllSummary(agentResults, format)
+	return printPipelineSummary(agentResults, format)
 }
 
+// printPipelineSummary prints the pipeline results and returns an error if any
+// agent failed, rather than calling os.Exit directly.
+func printPipelineSummary(results []agentResult, format string) error {
+	if err := printRunAllSummary(results, format); err != nil {
+		return err
+	}
+	for _, r := range results {
+		if r.ExitCode != 0 && r.ExitCode != -1 {
+			return fmt.Errorf("one or more pipeline agents failed")
+		}
+	}
+	return nil
+}
+
+// uniqueStrings deduplicates a string slice, preserving order.
+// File paths are not trimmed to avoid mangling paths with intentional whitespace.
 func uniqueStrings(s []string) []string {
 	seen := make(map[string]struct{})
 	var result []string
 	for _, v := range s {
-		v = strings.TrimSpace(v)
 		if _, ok := seen[v]; !ok && v != "" {
 			seen[v] = struct{}{}
 			result = append(result, v)

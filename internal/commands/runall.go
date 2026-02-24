@@ -500,11 +500,9 @@ func printRunAllSummary(results []agentResult, format string) error {
 	fmt.Println()
 	if failed > 0 {
 		log.Info("%d/%d agent(s) failed", failed, len(results))
-		os.Exit(1)
-	} else {
-		log.Info("All %d agent(s) completed successfully", len(results))
+		return fmt.Errorf("%d/%d agent(s) failed", failed, len(results))
 	}
-
+	log.Info("All %d agent(s) completed successfully", len(results))
 	return nil
 }
 
