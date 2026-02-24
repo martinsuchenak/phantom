@@ -45,6 +45,7 @@ type RunOptions struct {
 	Model     string // optional: substituted as {model} in agent command
 	BaseDir   string
 	Name      string
+	Progress  string // optional string for UI e.g., "[1/10]"
 	Timeout   time.Duration
 	Cleanup   bool
 	PushOnEnd bool

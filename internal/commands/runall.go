@@ -337,7 +337,8 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 			wg.Add(1)
 			go func(idx int, ac agentContext) {
 				defer wg.Done()
-				results[idx] = runSingleAgent(childCtx, ac.def, ac.ovl, absBaseDir, globalTimeout, doPush, t)
+				progressStr := fmt.Sprintf("[%d/%d]", idx+1, len(agentContexts))
+				results[idx] = runSingleAgent(childCtx, ac.def, ac.ovl, absBaseDir, globalTimeout, doPush, t, progressStr)
 			}(i, ac)
 		}
 
@@ -375,7 +376,7 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 	return printRunAllSummary(results, format)
 }
 
-func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBaseDir string, globalTimeout int, doPush bool, t *tui.TUI) agentResult {
+func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBaseDir string, globalTimeout int, doPush bool, t *tui.TUI, progress string) agentResult {
 	result := agentResult{
 		Name:  def.Name,
 		Agent: def.Agent,
@@ -409,6 +410,7 @@ func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBase
 		Timeout:   timeout,
 		PushOnEnd: doPush,
 		Headless:  true,
+		Progress:  progress,
 	}
 
 	if t != nil {
@@ -451,13 +453,13 @@ func printRunAllSummary(results []agentResult, format string) error {
 
 	failed := 0
 	for _, r := range results {
-		status := "ok"
+		status := "\033[32mok\033[0m"
 		if r.ExitCode != 0 {
-			status = "FAILED"
+			status = "\033[31mFAILED\033[0m"
 			failed++
 		}
 		if r.Error != "" && r.ExitCode == 0 {
-			status = "ERROR"
+			status = "\033[33mERROR\033[0m"
 			failed++
 		}
 

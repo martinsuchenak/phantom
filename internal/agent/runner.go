@@ -42,9 +42,14 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	}
 
 	// Log start
-	r.log.Info("[%s] Starting agent: %s", ovl.Name, opts.Agent)
-	r.log.Debug("[%s] Task: %s", ovl.Name, opts.Task)
-	r.log.Debug("[%s] Overlay: %s", ovl.Name, ovl.MountPoint)
+	prefix := fmt.Sprintf("\033[1m[%s]\033[0m", ovl.Name)
+	if opts.Progress != "" {
+		prefix = fmt.Sprintf("\033[36m%s\033[0m %s", opts.Progress, prefix)
+	}
+
+	r.log.Info("%s Starting agent: %s", prefix, opts.Agent)
+	r.log.Debug("%s Task: %s", prefix, opts.Task)
+	r.log.Debug("%s Overlay: %s", prefix, ovl.MountPoint)
 
 	// Build the command - parse agent string into command and args
 	// This avoids shell injection by not using sh -c
@@ -162,7 +167,13 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	}
 
 	// Log completion
-	r.log.Info("[%s] Agent completed in %s (exit code %d)", ovl.Name, duration.Round(time.Second), exitCode)
+	var statusColor string
+	if exitCode == 0 {
+		statusColor = "\033[32m" // green
+	} else {
+		statusColor = "\033[31m" // red
+	}
+	r.log.Info("%s Agent completed in %s (%sexit code %d\033[0m)", prefix, duration.Round(time.Second), statusColor, exitCode)
 
 	// Write footer to log file
 	if logFile != nil {

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/git"
@@ -221,6 +222,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 	}
 
 	var wg sync.WaitGroup
+	var startedAgents atomic.Int32
 	agentResults := make([]agentResult, len(pc.Agents))
 	var resultsMu sync.Mutex
 
@@ -416,7 +418,11 @@ Once the conflict is resolved, proceed to your actual task.
 				Branch:  branchName,
 				Timeout: ag.Timeout,
 			}
-			result := runSingleAgent(ctx, agToRun, ovl, absBaseDir, globalTimeout, doPush, nil)
+
+			started := startedAgents.Add(1)
+			progressStr := fmt.Sprintf("[%d/%d]", started, len(pc.Agents))
+
+			result := runSingleAgent(ctx, agToRun, ovl, absBaseDir, globalTimeout, doPush, nil, progressStr)
 
 			// Auto-commit so that dependent agents can fetch these changes
 			if result.ExitCode == 0 {

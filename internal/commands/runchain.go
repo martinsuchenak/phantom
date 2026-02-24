@@ -338,19 +338,19 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 				t.SetProgress("Running chain...", float64(i)/float64(len(steps)))
 			}
 
-			log.Info("[%d/%d] Running step %q: %s", i+1, len(steps), step.Name, step.Agent)
+			progressStr := fmt.Sprintf("[%d/%d]", i+1, len(steps))
 
-			result := runChainStep(childCtx, step, ovl, absBaseDir, globalTimeout, t)
-			results = append(results, result)
+			log.Info("%s Running step %q: %s", progressStr, step.Name, step.Agent)
+
+			results = append(results, runChainStep(childCtx, step, ovl, absBaseDir, globalTimeout, t, progressStr))
+			result := results[len(results)-1]
 
 			if result.ExitCode != 0 || result.Error != "" {
-				log.Error("[%d/%d] Step %q failed (exit %d)", i+1, len(steps), step.Name, result.ExitCode)
+				log.Warn("%s Step %q failed (exit %d)", progressStr, step.Name, result.ExitCode)
 				if !continueOnError {
 					stopped = true
 					break
 				}
-			} else {
-				log.Info("[%d/%d] Step %q completed in %s", i+1, len(steps), step.Name, formatDuration(result.Duration))
 			}
 		}
 
@@ -411,7 +411,7 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 	return nil
 }
 
-func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBaseDir string, globalTimeout int, t *tui.TUI) agentResult {
+func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBaseDir string, globalTimeout int, t *tui.TUI, progress string) agentResult {
 	result := agentResult{
 		Name:  step.Name,
 		Agent: step.Agent,
@@ -443,6 +443,7 @@ func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBase
 		Name:     ovl.Name,
 		Timeout:  timeout,
 		Headless: true,
+		Progress: progress,
 	}
 
 	if t != nil {
@@ -485,13 +486,17 @@ func printChainSummary(results []agentResult, format string, stoppedEarly bool) 
 
 	failed := 0
 	for _, r := range results {
-		status := "ok"
+		status := "\033[32mok\033[0m"
 		if r.ExitCode != 0 {
-			status = "FAILED"
+			status = "\033[31mFAILED\033[0m"
 			failed++
 		}
 		if r.Error != "" && r.ExitCode == 0 {
-			status = "ERROR"
+			status = "\033[33mERROR\033[0m"
+			failed++
+		}
+		if r.ExitCode == -1 {
+			status = "\033[33mSKIPPED\033[0m"
 			failed++
 		}
 
