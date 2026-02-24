@@ -1,0 +1,375 @@
+# Phantom Documentation Website - Agent Pipeline Configuration
+# Uses DAG pipeline for parallel execution where possible
+#
+# Project: Hugo static site for https://github.com/martinsuchenak/phantom
+# Target: Professional documentation site with guides, API reference, examples
+
+# Pipeline configuration
+
+# DAG Tasks with dependencies
+agents:
+  # =========================================================================
+  # PHASE 1: Foundation (no dependencies - can run in parallel)
+  # =========================================================================
+
+  - name: hugo-init
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Initialize a new Hugo static site in the current directory for the Phantom CLI documentation project.
+
+      Requirements:
+      1. Run `hugo new site . --force` to initialize Hugo
+      2. Create the basic directory structure:
+         - content/en/docs/ (documentation pages)
+         - content/en/blog/ (blog/posts if needed)
+         - static/images/ (images and assets)
+         - assets/css/ (custom CSS)
+         - layouts/partials/ (custom partials)
+         - layouts/shortcodes/ (custom shortcodes)
+      3. Create an empty .gitkeep in each directory to preserve structure
+      4. Do NOT configure hugo.toml yet (separate task)
+      5. Add a .gitignore for Hugo (public/, resources/, .hugo_build.lock)
+
+      The site is for documenting Phantom - a CLI tool for managing overlay filesystems
+      to enable multiple AI agents to work on the same codebase in parallel.
+    depends_on: []
+    timeout: 15
+
+  - name: theme-setup
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Set up the Hugo theme for the Phantom documentation site.
+
+      Use the "Hugo Book" theme as a git submodule (it's ideal for documentation):
+      1. Add the theme: `git submodule add https://github.com/alex-shpak/hugo-book themes/book`
+      2. Create the theme configuration in a separate file: config/_default/params.toml
+      3. Configure theme settings:
+         - BookTheme: 'auto' (light/dark)
+         - BookToC: true
+         - BookSectionBundles: true
+         - BookRepo: 'https://github.com/martinsuchenak/phantom'
+         - BookEditPath: 'edit/main/docs'
+      4. Create basic theme override layouts if needed in layouts/partials/
+
+      Do NOT modify hugo.toml yet - that's a separate task.
+    depends_on: []
+    timeout: 20
+
+  - name: content-structure
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Create the content structure and navigation for the Phantom documentation site.
+
+      Create the following content files with front matter and placeholder content:
+
+      1. content/en/_index.md - Homepage with:
+         - Hero section introducing Phantom
+         - Key features list
+         - Quick start code block
+         - Links to main documentation sections
+
+      2. content/en/docs/_index.md - Documentation landing page
+
+      3. content/en/docs/getting-started/_index.md - Getting Started section
+
+      4. content/en/docs/getting-started/installation.md - Installation guide with:
+         - Homebrew instructions
+         - Binary download
+         - Build from source
+         - Prerequisites (Linux/macOS)
+
+      5. content/en/docs/getting-started/quick-start.md - Quick start tutorial
+
+      6. content/en/docs/concepts/_index.md - Core Concepts section
+
+      7. content/en/docs/concepts/overlays.md - Explain overlay filesystems concept
+
+      8. content/en/docs/concepts/agents.md - Explain how agents work
+
+      9. content/en/docs/concepts/workflows.md - Overview of workflow patterns
+
+      10. content/en/menu/index.md - Menu configuration for sidebar
+
+      Use Hugo Book theme's menu structure with weight ordering.
+    depends_on: []
+    timeout: 25
+
+  # =========================================================================
+  # PHASE 2: Configuration (depends on Phase 1)
+  # =========================================================================
+
+  - name: hugo-config
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Create the Hugo configuration files for the Phantom documentation site.
+
+      Create config/_default/ with:
+
+      1. hugo.toml - Main configuration:
+         - baseURL: 'https://phantom.martinsuchenak.com/' (placeholder)
+         - title: 'Phantom - Parallel AI Agent Development'
+         - languageCode: 'en'
+         - theme: 'book'
+         - enableGitInfo: true
+         - enableRobotsTXT: true
+         - disablePathToLower: true
+         - [markup] section with goldmark settings for code highlighting
+         - [outputs] for HTML and RSS
+
+      2. languages.toml - Language configuration (English primary)
+
+      3. menus.toml - Main menu structure with links to:
+         - Documentation
+         - GitHub Repository
+         - Installation
+
+      Make sure the configuration integrates with the theme already set up.
+    depends_on:
+      - hugo-init
+      - theme-setup
+    timeout: 15
+
+  # =========================================================================
+  # PHASE 3: Documentation Content (depends on structure)
+  # =========================================================================
+
+  - name: docs-commands
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Create comprehensive command reference documentation for Phantom.
+
+      Source information from: https://github.com/martinsuchenak/phantom
+
+      Create content/en/docs/commands/ with:
+
+      1. _index.md - Commands overview page with summary table
+
+      2. start-stop.md - Overlay lifecycle commands (start, stop, restart)
+
+      3. status-list.md - Status and inspection commands (list, status, inspect)
+
+      4. run-commands.md - Agent execution commands (run, run-all, run-chain)
+
+      5. git-commands.md - Git integration commands (commit, apply, merge, sync)
+
+      6. compare-commands.md - Comparison commands (diff, compare, conflicts)
+
+      7. snapshot-commands.md - Snapshot commands (snapshot, export, clone)
+
+      8. maintenance.md - Maintenance commands (prune, gc, health, lock/unlock, pin/unpin)
+
+      Each command doc should include:
+      - Syntax/usage
+      - Flags and options
+      - Examples
+      - Related commands
+
+      Use Hugo code fences with appropriate language highlighting (bash, yaml).
+    depends_on:
+      - content-structure
+    timeout: 30
+
+  - name: docs-guides
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Create practical guides and tutorials for the Phantom documentation site.
+
+      Create content/en/docs/guides/ with:
+
+      1. _index.md - Guides overview
+
+      2. parallel-agents.md - Guide: Running Multiple Agents in Parallel
+         - When to use parallel execution
+         - Setting up agents.yaml
+         - Comparing results
+         - Merging changes
+
+      3. sequential-pipeline.md - Guide: Building Agent Pipelines
+         - When to use sequential execution
+         - Creating chain.yaml
+         - Error handling
+         - Continue on error
+
+      4. git-workflow.md - Guide: Git Integration Best Practices
+         - Branch management
+         - Commit strategies
+         - Merge conflict resolution
+
+      5. ci-cd.md - Guide: CI/CD Integration
+         - GitHub Actions example
+         - Automated testing
+         - Notification hooks
+
+      6. troubleshooting.md - Common issues and solutions
+
+      Include practical code examples and real command sequences.
+    depends_on:
+      - content-structure
+    timeout: 30
+
+  - name: docs-api-reference
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Create API reference and configuration documentation.
+
+      Create content/en/docs/reference/ with:
+
+      1. _index.md - Reference overview
+
+      2. configuration.md - Full configuration reference
+         - config.yaml structure
+         - All settings explained
+         - Validation rules
+         - Environment variables
+
+      3. agents-yaml.md - agents.yaml format reference
+         - Parallel mode configuration
+         - Sequential mode configuration
+         - Task delivery modes (stdin, placeholder, inline)
+         - Model configuration
+
+      4. chain-yaml.md - chain.yaml format reference
+
+      5. hooks.md - Hooks system reference
+         - Hook types (success, failure, always)
+         - Environment variables
+         - Webhook examples
+
+      6. templates.md - Built-in agent templates reference
+         - Template list
+         - Command formats
+         - Task modes
+
+      7. env-variables.md - Environment variables reference
+
+      Use tables and code blocks for easy scanning.
+    depends_on:
+      - content-structure
+    timeout: 30
+
+  # =========================================================================
+  # PHASE 4: Polish & Assets (depends on content)
+  # =========================================================================
+
+  - name: static-assets
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Create static assets and visual elements for the Phantom documentation site.
+
+      Create in static/:
+
+      1. static/images/logo.svg - Simple Phantom logo (SVG)
+         - Ghost/phantom icon style
+         - Clean, minimal design
+         - Works in both light and dark mode
+
+      2. static/images/diagram-overlay.svg - Architecture diagram showing:
+         - Base directory (lower layer)
+         - Multiple overlays
+         - Git branches
+         - Mount points
+
+      3. static/favicon.ico - Favicon placeholder (or reference to SVG)
+
+      Create in assets/css/:
+
+      4. assets/css/custom.css - Custom styles:
+         - Code block enhancements
+         - Callout/admonition styles
+         - Custom colors for branding
+         - Responsive adjustments
+
+      Create in layouts/shortcodes/:
+
+      5. layouts/shortcodes/ Callout.html - Callout shortcode for notes, warnings, tips
+
+      6. layouts/shortcodes/ tabs.html - Tabbed content shortcode
+    depends_on:
+      - hugo-config
+      - content-structure
+    timeout: 20
+
+  - name: homepage-polish
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Enhance the homepage with compelling content and layout.
+
+      Update content/en/_index.md with:
+
+      1. Hero section:
+         - Catchy tagline: "Ship Code Faster with Parallel AI Agents"
+         - Brief value proposition
+         - CTA button to quick start
+
+      2. Feature highlights (3-4 key features):
+         - Parallel agent execution
+         - Git integration
+         - Overlay isolation
+         - CI/CD ready
+
+      3. Code example showing the workflow:
+         ```bash
+         phantom run-all ~/myproject --config agents.yaml
+         ```
+
+      4. Quick links section to main docs
+
+      Create layouts/index.html if needed for custom homepage layout beyond what the theme provides.
+      Ensure the design is clean, professional, and optimized for developer documentation.
+    depends_on:
+      - hugo-config
+      - static-assets
+    timeout: 20
+
+  # =========================================================================
+  # PHASE 5: Final Integration (depends on all previous phases)
+  # =========================================================================
+
+  - name: final-integration
+    agent: "claude --print --dangerously-skip-permissions"
+    task: |
+      Final integration and verification of the Phantom documentation site.
+
+      Tasks:
+
+      1. Verify the site builds successfully:
+         - Run `hugo` to build
+         - Check for any errors or warnings
+
+      2. Create README.md for the repository with:
+         - Project description
+         - Local development instructions
+         - Build and deployment instructions
+         - Content contribution guidelines
+
+      3. Create netlify.toml or vercel.json for deployment configuration:
+         - Build command: hugo
+         - Output directory: public
+         - Hugo version specification
+
+      4. Add GitHub Actions workflow in .github/workflows/deploy.yml:
+         - Trigger on push to main
+         - Build Hugo site
+         - Deploy to GitHub Pages (or document alternative)
+
+      5. Verify all internal links work
+
+      6. Ensure all code examples are properly formatted
+
+      7. Create a CONTRIBUTING.md if appropriate
+
+      Report any issues found during verification.
+    depends_on:
+      - hugo-config
+      - docs-commands
+      - docs-guides
+      - docs-api-reference
+      - static-assets
+      - homepage-polish
+    timeout: 25
+
+# Hooks for post-execution
+hooks:
+  - name: verify-build
+    on: success
+    command: "hugo --gc --minify 2>&1 | head -20"

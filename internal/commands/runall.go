@@ -42,6 +42,12 @@ func NewRunAllCommand() *cli.Command {
 				Usage:        "Global timeout per agent in minutes (max 1440)",
 				DefaultValue: 0,
 			},
+			&cli.IntFlag{
+				Name:         "concurrency",
+				Aliases:      []string{"j"},
+				Usage:        "Max concurrency per agent executable type (0 = unlimited)",
+				DefaultValue: 0,
+			},
 			&cli.BoolFlag{
 				Name:  "cleanup",
 				Usage: "Cleanup all overlays after completion",
@@ -113,6 +119,7 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 	configPath := cmd.GetString("config")
 	agentsInline := cmd.GetString("agents")
 	timeoutMinutes := cmd.GetInt("timeout")
+	concurrency := cmd.GetInt("concurrency")
 	doCleanup := cmd.GetBool("cleanup")
 	doPush := cmd.GetBool("push")
 	format := cmd.GetString("format")
@@ -163,7 +170,7 @@ func doRunAll(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	return processRunAll(ctx, baseDir, agents, timeoutMinutes, doCleanup, doPush, format)
+	return processRunAll(ctx, baseDir, agents, timeoutMinutes, concurrency, doCleanup, doPush, format)
 }
 
 func loadAgentsConfig(path string) ([]agentDef, error) {
@@ -241,7 +248,7 @@ func filterAgents(agents []agentDef, onlyAgent, fromAgent string) ([]agentDef, e
 	return agents, nil
 }
 
-func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout int, doCleanup, doPush bool, format string) error {
+func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globalTimeout, concurrency int, doCleanup, doPush bool, format string) error {
 	var results []agentResult
 
 	logic := func(childCtx context.Context, t *tui.TUI) error {
@@ -333,12 +340,16 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 		var wg sync.WaitGroup
 		results = make([]agentResult, len(agentContexts))
 
+		limiter := NewAgentLimiter(concurrency)
+
 		for i, ac := range agentContexts {
 			wg.Add(1)
 			go func(idx int, ac agentContext) {
 				defer wg.Done()
+				limiter.Acquire(ac.def.Agent)
 				progressStr := fmt.Sprintf("[%d/%d]", idx+1, len(agentContexts))
 				results[idx] = runSingleAgent(childCtx, ac.def, ac.ovl, absBaseDir, globalTimeout, doPush, t, progressStr)
+				limiter.Release(ac.def.Agent)
 			}(i, ac)
 		}
 

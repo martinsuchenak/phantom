@@ -127,7 +127,7 @@ func TestProcessRunAll(t *testing.T) {
 		},
 	}
 
-	err := processRunAll(context.Background(), baseDir, agents, 1, true, false, "json")
+	err := processRunAll(context.Background(), baseDir, agents, 1, 0, true, false, "json")
 	if err != nil {
 		t.Fatalf("processRunAll failed: %v", err)
 	}

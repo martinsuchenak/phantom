@@ -1600,7 +1600,7 @@ func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath, model st
 
 	oldLog := log
 	log = &tuiLogger{t: t}
-	err = processRunAll(ctx, baseDir, agents, 0, false, false, "table")
+	err = processRunAll(ctx, baseDir, agents, 0, 0, false, false, "table")
 	log = oldLog
 
 	if err != nil {

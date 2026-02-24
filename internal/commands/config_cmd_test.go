@@ -1,6 +1,9 @@
 package commands
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestNewConfigCommand(t *testing.T) {
 	cmd := NewConfigCommand()
@@ -17,7 +20,7 @@ func TestDoConfigShow(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	// doConfigShow just prints, verify it doesn't panic
-	err := doConfigShow(nil, nil)
+	err := doConfigShow(context.Background(), nil)
 	if err != nil {
 		t.Errorf("doConfigShow failed: %v", err)
 	}

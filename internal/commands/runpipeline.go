@@ -51,6 +51,12 @@ func NewRunPipelineCommand() *cli.Command {
 				Usage:        "Global timeout per agent in minutes (max 1440)",
 				DefaultValue: 0,
 			},
+			&cli.IntFlag{
+				Name:         "concurrency",
+				Aliases:      []string{"j"},
+				Usage:        "Max concurrency per agent executable type (0 = unlimited)",
+				DefaultValue: 0,
+			},
 			&cli.BoolFlag{
 				Name:  "cleanup",
 				Usage: "Cleanup all overlays after completion",
@@ -70,6 +76,14 @@ func NewRunPipelineCommand() *cli.Command {
 				Usage:   "Model to use (substituted as {model} in agent commands; overrides per-agent model)",
 				EnvVars: []string{"OVERLAY_MODEL"},
 			},
+			&cli.StringFlag{
+				Name:  "only",
+				Usage: "Run only the specified agent",
+			},
+			&cli.StringFlag{
+				Name:  "from",
+				Usage: "Resume from the specified agent",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -86,10 +100,13 @@ func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 	baseDir := cmd.GetStringArg("base-dir")
 	configPath := cmd.GetString("config")
 	timeoutMinutes := cmd.GetInt("timeout")
+	concurrency := cmd.GetInt("concurrency")
 	doCleanup := cmd.GetBool("cleanup")
 	doPush := cmd.GetBool("push")
 	format := cmd.GetString("format")
 	modelOverride := cmd.GetString("model")
+	onlyAgent := cmd.GetString("only")
+	fromAgent := cmd.GetString("from")
 
 	if configPath == "" {
 		return fmt.Errorf("--config is required for run-pipeline")
@@ -104,6 +121,11 @@ func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no agents defined in pipeline config")
 	}
 
+	pc.Agents, err = filterPipelineAgents(pc.Agents, onlyAgent, fromAgent)
+	if err != nil {
+		return err
+	}
+
 	if pc.Name == "" {
 		pc.Name = fmt.Sprintf("pipeline-%d", time.Now().Unix())
 	}
@@ -115,7 +137,58 @@ func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 		}
 	}
 
-	return processRunPipeline(ctx, baseDir, pc, timeoutMinutes, doCleanup, doPush, format)
+	return processRunPipeline(ctx, baseDir, pc, timeoutMinutes, concurrency, doCleanup, doPush, format)
+}
+
+// filterPipelineAgents filters agents based on --only and --from flags, and prunes missing dependencies
+func filterPipelineAgents(agents []pipelineAgent, onlyAgent, fromAgent string) ([]pipelineAgent, error) {
+	if onlyAgent != "" && fromAgent != "" {
+		return nil, fmt.Errorf("cannot use both --only and --from")
+	}
+
+	var result []pipelineAgent
+
+	if onlyAgent != "" {
+		for _, a := range agents {
+			if a.Name == onlyAgent {
+				result = append(result, a)
+			}
+		}
+		if len(result) == 0 {
+			return nil, fmt.Errorf("agent %q not found in pipeline config", onlyAgent)
+		}
+	} else if fromAgent != "" {
+		found := false
+		for i, a := range agents {
+			if a.Name == fromAgent {
+				result = append(result, agents[i:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("agent %q not found in pipeline config", fromAgent)
+		}
+	} else {
+		result = append(result, agents...)
+	}
+
+	agentMap := make(map[string]bool)
+	for _, a := range result {
+		agentMap[a.Name] = true
+	}
+
+	for i := range result {
+		var newDeps []string
+		for _, dep := range result[i].DependsOn {
+			if agentMap[dep] {
+				newDeps = append(newDeps, dep)
+			}
+		}
+		result[i].DependsOn = newDeps
+	}
+
+	return result, nil
 }
 
 func loadPipelineConfig(path string) (*pipelineConfig, error) {
@@ -147,7 +220,7 @@ type pipelineDepResult struct {
 	MountPoint string
 }
 
-func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig, globalTimeout int, doCleanup, doPush bool, format string) error {
+func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig, globalTimeout, concurrency int, doCleanup, doPush bool, format string) error {
 	absBaseDir, err := filepath.Abs(baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve base directory: %w", err)
@@ -225,6 +298,8 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 	var startedAgents atomic.Int32
 	agentResults := make([]agentResult, len(pc.Agents))
 	var resultsMu sync.Mutex
+
+	limiter := NewAgentLimiter(concurrency)
 
 	for idx, a := range pc.Agents {
 		wg.Add(1)
@@ -419,10 +494,15 @@ Once the conflict is resolved, proceed to your actual task.
 				Timeout: ag.Timeout,
 			}
 
+			// Wait for concurrency token
+			limiter.Acquire(agToRun.Agent)
+
 			started := startedAgents.Add(1)
 			progressStr := fmt.Sprintf("[%d/%d]", started, len(pc.Agents))
 
 			result := runSingleAgent(ctx, agToRun, ovl, absBaseDir, globalTimeout, doPush, nil, progressStr)
+
+			limiter.Release(agToRun.Agent)
 
 			// Auto-commit so that dependent agents can fetch these changes
 			if result.ExitCode == 0 {
