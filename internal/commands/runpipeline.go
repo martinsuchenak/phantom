@@ -549,6 +549,7 @@ Once the conflict is resolved, proceed to your actual task.
 			}
 
 			// Wait for concurrency token
+			pt.Update(ag.Name, StateQueued)
 			limiter.Acquire(agToRun.Agent)
 
 			started := startedAgents.Add(1)

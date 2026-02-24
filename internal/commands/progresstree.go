@@ -14,6 +14,7 @@ const (
 	StateStarting AgentState = "Starting"
 	StateFetching AgentState = "Fetching"
 	StateMerging  AgentState = "Merging"
+	StateQueued   AgentState = "Queued"
 	StateRunning  AgentState = "Running"
 	StateDone     AgentState = "Done"
 	StateFailed   AgentState = "Failed"
@@ -119,6 +120,9 @@ func (pt *ProgressTree) render() {
 		case StateStarting, StateFetching, StateMerging:
 			icon = "⚙️ "
 			color = "\033[36m" // cyan
+		case StateQueued:
+			icon = "⏸️ "
+			color = "\033[35m" // magenta
 		case StateRunning:
 			icon = "🏃"
 			color = "\033[34m" // blue
