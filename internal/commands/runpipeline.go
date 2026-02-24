@@ -296,6 +296,8 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 	var resultsMu sync.Mutex
 
 	limiter := NewAgentLimiter(concurrency)
+	pt := NewProgressTree(pc.Agents)
+	pt.render()
 
 	for idx, a := range pc.Agents {
 		wg.Add(1)
@@ -340,7 +342,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 			}
 
 			if ag.skip {
-				log.Info("[%s] \033[33mSKIPPED\033[0m: Recovering state...", ag.Name)
+				pt.Logf("[%s] \033[33mSKIPPED\033[0m: Recovering state...", ag.Name)
 				if store.Exists(ovlName) {
 					if ovl, err := store.Load(ovlName); err == nil {
 						results.Store(ag.Name, pipelineDepResult{
@@ -369,8 +371,9 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 
 			// If we have dependencies, create the new branch from baseBranch, then merge dependency branches into it
 			var ovl *api.Overlay
+			pt.Update(ag.Name, StateStarting)
 			if store.Exists(opts.Name) {
-				log.Info("[%s] Reusing existing overlay %q", ag.Name, opts.Name)
+				pt.Logf("[%s] Reusing existing overlay %q", ag.Name, opts.Name)
 				var loadErr error
 				ovl, loadErr = store.Load(opts.Name)
 				if loadErr != nil {
@@ -438,14 +441,14 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 			// Git checkout to new branch from base branch
 			branchExists, _ := gitOps.BranchExists(ctx, ovl.MountPoint, branchName)
 			if !branchExists {
-				log.Info("[%s] Creating branch %q from %q", ag.Name, branchName, baseBranch)
+				pt.Logf("[%s] Creating branch %q from %q", ag.Name, branchName, baseBranch)
 				if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branchName, baseBranch); err != nil {
-					log.Error("[%s] Failed to create branch %q: %v", ag.Name, branchName, err)
+					pt.Errorf("[%s] Failed to create branch %q: %v", ag.Name, branchName, err)
 				}
 			} else {
-				log.Info("[%s] Switching to branch %q", ag.Name, branchName)
+				pt.Logf("[%s] Switching to branch %q", ag.Name, branchName)
 				if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branchName); err != nil {
-					log.Error("[%s] Failed to switch to branch %q: %v", ag.Name, branchName, err)
+					pt.Errorf("[%s] Failed to switch to branch %q: %v", ag.Name, branchName, err)
 				}
 			}
 
@@ -456,19 +459,22 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 					val, _ := results.Load(depName)
 					depRes := val.(pipelineDepResult)
 					if depRes.Branch != "" && depRes.MountPoint != "" {
-						log.Info("[%s] Fetching dependency %q", ag.Name, depName)
+						pt.Update(ag.Name, StateFetching)
+						pt.Logf("[%s] Fetching dependency %q", ag.Name, depName)
 						fetchErr := gitOps.FetchFrom(ctx, ovl.MountPoint, depRes.MountPoint, depRes.Branch)
 						if fetchErr != nil {
 							err := fmt.Errorf("failed to fetch from dependency %s: %w", depName, fetchErr)
-							log.Error("[%s] git fetch error: %v", ag.Name, err)
+							pt.Errorf("[%s] git fetch error: %v", ag.Name, err)
 							results.Store(ag.Name, pipelineDepResult{Err: err})
 							resultsMu.Lock()
 							agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
 							resultsMu.Unlock()
+							pt.Update(ag.Name, StateFailed)
 							return
 						}
 
-						log.Info("[%s] Merging dependency %q", ag.Name, depName)
+						pt.Update(ag.Name, StateMerging)
+						pt.Logf("[%s] Merging dependency %q", ag.Name, depName)
 						err := gitOps.MergeBranchNoEdit(ctx, ovl.MountPoint, "FETCH_HEAD")
 						if err != nil {
 							// If there's a conflict, err might be non-nil. Check unmerged files.
@@ -479,6 +485,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 								resultsMu.Lock()
 								agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
 								resultsMu.Unlock()
+								pt.Update(ag.Name, StateFailed)
 								return
 							} else if len(unmerged) > 0 {
 								// Conflict recorded
@@ -489,6 +496,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 								resultsMu.Lock()
 								agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
 								resultsMu.Unlock()
+								pt.Update(ag.Name, StateFailed)
 								return
 							}
 						}
@@ -528,7 +536,7 @@ Once the conflict is resolved, proceed to your actual task.
 				}
 				finalTask = strings.Replace(finalTask, "{conflicted_files}", conflictList, 1)
 
-				log.Warn("[%s] Found merge conflicts! Injecting resolution prompt.", ag.Name)
+				pt.Logf("[%s] \033[33mFound merge conflicts! Injecting resolution prompt.\033[0m", ag.Name)
 			}
 
 			agToRun := agentDef{
@@ -546,6 +554,7 @@ Once the conflict is resolved, proceed to your actual task.
 			started := startedAgents.Add(1)
 			progressStr := fmt.Sprintf("[%d/%d]", started, len(pc.Agents))
 
+			pt.Update(ag.Name, StateRunning)
 			result := runSingleAgent(ctx, agToRun, ovl, absBaseDir, globalTimeout, doPush, nil, progressStr)
 
 			limiter.Release(agToRun.Agent)
@@ -564,7 +573,7 @@ Once the conflict is resolved, proceed to your actual task.
 				if len(unmerged) > 0 {
 					result.ExitCode = 1
 					result.Error = fmt.Sprintf("failed failsafe: %d files still contain conflict markers (e.g., %s)", len(unmerged), unmerged[0])
-					log.Error("[%s] Pipeline failsafe triggered: unresolved conflicts remained.", ag.Name)
+					pt.Errorf("[%s] Pipeline failsafe triggered: unresolved conflicts remained.", ag.Name)
 				}
 			}
 
@@ -574,15 +583,18 @@ Once the conflict is resolved, proceed to your actual task.
 
 			if result.ExitCode == 0 && result.Error == "" {
 				results.Store(ag.Name, pipelineDepResult{Branch: branchName, MountPoint: ovl.MountPoint})
+				pt.Update(ag.Name, StateDone)
 			} else {
 				err := fmt.Errorf("agent %q failed with exit code %d: %s", ag.Name, result.ExitCode, result.Error)
 				results.Store(ag.Name, pipelineDepResult{Err: err})
+				pt.Update(ag.Name, StateFailed)
 			}
 		}(idx, a)
 	}
 
 	// Wait for all agents to complete
 	wg.Wait()
+	pt.Clear()
 
 	return printRunAllSummary(agentResults, format)
 }
