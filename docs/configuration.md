@@ -189,7 +189,7 @@ phantom template list
 | `opencode-stdin` | `opencode run --prompt` | stdin |
 | `qwen-code` | `qwen --prompt "{task}"` | placeholder |
 | `qwen-code-stdin` | `qwen` | stdin |
-| `kiro` | `kiro chat --no-interactive --trust-all-tools` | stdin |
+| `kiro` | `kiro-cli chat --no-interactive --trust-all-tools "{task}"` | placeholder |
 
 ### Task Delivery Modes
 

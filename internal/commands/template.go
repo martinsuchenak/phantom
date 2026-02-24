@@ -111,9 +111,9 @@ var builtinTemplates = []agentTemplate{
 	},
 	{
 		Name:        "kiro",
-		Description: "Kiro CLI — non-interactive chat, all tools trusted, task piped to stdin",
-		Agent:       "kiro chat --no-interactive --trust-all-tools",
-		TaskMode:    "stdin",
+		Description: "Kiro CLI — non-interactive chat, all tools trusted, task as placeholder",
+		Agent:       `kiro-cli chat --no-interactive --trust-all-tools "{task}"`,
+		TaskMode:    "placeholder",
 	},
 }
 
