@@ -193,6 +193,15 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 		}
 	}
 
+	if baseBranch != "" {
+		exists, _ := gitOps.BranchExists(ctx, absBaseDir, baseBranch)
+		if !exists {
+			if err := gitOps.CreateBranch(ctx, absBaseDir, baseBranch, ""); err != nil {
+				return fmt.Errorf("failed to create base branch %q: %w", baseBranch, err)
+			}
+		}
+	}
+
 	agentMap := make(map[string]pipelineAgent)
 	doneChans := make(map[string]chan struct{})
 	var results sync.Map // string -> pipelineDepResult
