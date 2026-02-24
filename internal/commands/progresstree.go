@@ -143,8 +143,6 @@ func (pt *ProgressTree) render() {
 
 		line := fmt.Sprintf("%s%s %s %s [%s]\033[0m", prefix, connector, icon, color+node, state)
 		if visited[node] {
-			line += " \033[90m(deduped)\033[0m"
-			output = append(output, line)
 			return
 		}
 		visited[node] = true
