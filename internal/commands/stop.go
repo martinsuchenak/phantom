@@ -18,6 +18,11 @@ func NewStopCommand() *cli.Command {
 		Description: "Unmounts the specified overlay and optionally removes all associated data.",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
+				Name:    "all",
+				Aliases: []string{"a"},
+				Usage:   "Stop all overlays",
+			},
+			&cli.BoolFlag{
 				Name:  "cleanup",
 				Usage: "Remove overlay data after unmounting",
 			},
@@ -35,7 +40,7 @@ func NewStopCommand() *cli.Command {
 			&cli.StringArg{
 				Name:     "name",
 				Usage:    "Name of the overlay to stop",
-				Required: true,
+				Required: false,
 			},
 		},
 		Run: doStop,
@@ -44,12 +49,41 @@ func NewStopCommand() *cli.Command {
 
 func doStop(ctx context.Context, cmd *cli.Command) error {
 	name := cmd.GetStringArg("name")
-	if name == "" {
-		return fmt.Errorf("overlay name is required")
+	doAll := cmd.GetBool("all")
+	if !doAll && name == "" {
+		return fmt.Errorf("overlay name is required, or use --all to stop all overlays")
 	}
 	doCleanup := cmd.GetBool("cleanup")
 	doPush := cmd.GetBool("push")
 	force := cmd.GetBool("force")
+
+	if doAll {
+		store, err := state.NewStore(cfg.GetStatePath())
+		if err != nil {
+			return fmt.Errorf("failed to initialize state store: %w", err)
+		}
+		overlays, err := store.LoadAll()
+		if err != nil {
+			return fmt.Errorf("failed to load overlays: %w", err)
+		}
+
+		if len(overlays) == 0 {
+			log.Info("No active overlays to stop")
+			return nil
+		}
+
+		var hasErrors bool
+		for _, ovl := range overlays {
+			if err := processStop(ctx, ovl.Name, doCleanup, doPush, force); err != nil {
+				log.Error("Failed to stop overlay %q: %v", ovl.Name, err)
+				hasErrors = true
+			}
+		}
+		if hasErrors {
+			return fmt.Errorf("one or more overlays failed to stop")
+		}
+		return nil
+	}
 
 	return processStop(ctx, name, doCleanup, doPush, force)
 }

@@ -35,18 +35,20 @@ PHANTOM_PATH=$(phantom start ~/myproject -n my-feature)
 cd "$PHANTOM_PATH"
 ```
 
-### `phantom stop <name>`
+### `phantom stop [name]`
 
-Unmount and optionally cleanup an overlay.
+Unmount and optionally cleanup an overlay or all overlays. Note: `name` is required unless `--all` is used.
 
 ```bash
 phantom stop feature-a
 phantom stop feature-a --cleanup
 phantom stop feature-a --push --force
+phantom stop --all --cleanup
 ```
 
 | Flag | Description |
 |------|-------------|
+| `--all, -a` | Stop all overlays |
 | `--cleanup` | Remove overlay data after unmounting |
 | `--push` | Push branch to remote before stopping |
 | `--force, -f` | Force unmount if stuck |
