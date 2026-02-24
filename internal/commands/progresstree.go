@@ -81,6 +81,27 @@ func (pt *ProgressTree) Errorf(format string, args ...any) {
 	pt.render()
 }
 
+func stateIcon(s AgentState) string {
+	switch s {
+	case StatePending:
+		return "⏳"
+	case StateSkipped:
+		return "⏭️ "
+	case StateStarting, StateFetching, StateMerging:
+		return "⚙️ "
+	case StateQueued:
+		return "⏸️ "
+	case StateRunning:
+		return "🏃"
+	case StateDone:
+		return "✅"
+	case StateFailed:
+		return "❌"
+	default:
+		return "❓"
+	}
+}
+
 func (pt *ProgressTree) render() {
 	if pt.lines > 0 {
 		fmt.Printf("\033[%dA\033[J", pt.lines) // Clear previously rendered lines
@@ -90,11 +111,11 @@ func (pt *ProgressTree) render() {
 	output = append(output, "\n\033[1m🚀 Pipeline Progress\033[0m\n")
 
 	children := make(map[string][]string)
+	agentDeps := make(map[string][]string)
 	roots := []string{}
 
-	inDegree := make(map[string]int)
 	for _, a := range pt.agents {
-		inDegree[a.Name] += len(a.DependsOn)
+		agentDeps[a.Name] = a.DependsOn
 		if len(a.DependsOn) == 0 {
 			roots = append(roots, a.Name)
 		}
@@ -107,11 +128,15 @@ func (pt *ProgressTree) render() {
 
 	var doPrint func(node, prefix string, isLast bool)
 	doPrint = func(node, prefix string, isLast bool) {
+		if visited[node] {
+			return
+		}
+		visited[node] = true
+
 		state := pt.states[node]
 
 		var icon string
 		var color string
-		// Map state to color and icon
 		switch state {
 		case StatePending:
 			icon = "⏳"
@@ -142,10 +167,17 @@ func (pt *ProgressTree) render() {
 		}
 
 		line := fmt.Sprintf("%s%s %s %s [%s]\033[0m", prefix, connector, icon, color+node, state)
-		if visited[node] {
-			return
+
+		// Append live "needs" suffix for nodes with dependencies
+		deps := agentDeps[node]
+		if len(deps) > 0 {
+			parts := make([]string, 0, len(deps))
+			for _, dep := range deps {
+				parts = append(parts, fmt.Sprintf("%s %s", dep, stateIcon(pt.states[dep])))
+			}
+			line += fmt.Sprintf(" \033[90m(needs: %s)\033[0m", strings.Join(parts, ", "))
 		}
-		visited[node] = true
+
 		output = append(output, line)
 
 		childs := children[node]
