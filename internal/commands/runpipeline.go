@@ -32,6 +32,7 @@ type pipelineAgent struct {
 	Branch    string   `yaml:"branch" json:"branch"`
 	Timeout   int      `yaml:"timeout" json:"timeout"`
 	DependsOn []string `yaml:"depends_on" json:"depends_on"`
+	skip      bool
 }
 
 // NewRunPipelineCommand creates the run-pipeline command
@@ -45,6 +46,11 @@ func NewRunPipelineCommand() *cli.Command {
 				Name:    "config",
 				Aliases: []string{"c"},
 				Usage:   "Path to pipeline YAML config file",
+			},
+			&cli.StringFlag{
+				Name:    "name",
+				Aliases: []string{"n"},
+				Usage:   "Pipeline name (overrides config). Reuses existing overlays if found.",
 			},
 			&cli.IntFlag{
 				Name:         "timeout",
@@ -99,6 +105,7 @@ func NewRunPipelineCommand() *cli.Command {
 func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 	baseDir := cmd.GetStringArg("base-dir")
 	configPath := cmd.GetString("config")
+	pipelineName := cmd.GetString("name")
 	timeoutMinutes := cmd.GetInt("timeout")
 	concurrency := cmd.GetInt("concurrency")
 	doCleanup := cmd.GetBool("cleanup")
@@ -126,6 +133,10 @@ func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	if pipelineName != "" {
+		pc.Name = pipelineName
+	}
+
 	if pc.Name == "" {
 		pc.Name = fmt.Sprintf("pipeline-%d", time.Now().Unix())
 	}
@@ -146,49 +157,34 @@ func filterPipelineAgents(agents []pipelineAgent, onlyAgent, fromAgent string) (
 		return nil, fmt.Errorf("cannot use both --only and --from")
 	}
 
-	var result []pipelineAgent
-
 	if onlyAgent != "" {
-		for _, a := range agents {
+		found := false
+		for i, a := range agents {
 			if a.Name == onlyAgent {
-				result = append(result, a)
+				found = true
+			} else {
+				agents[i].skip = true
 			}
 		}
-		if len(result) == 0 {
+		if !found {
 			return nil, fmt.Errorf("agent %q not found in pipeline config", onlyAgent)
 		}
 	} else if fromAgent != "" {
 		found := false
 		for i, a := range agents {
 			if a.Name == fromAgent {
-				result = append(result, agents[i:]...)
 				found = true
-				break
+			}
+			if !found {
+				agents[i].skip = true
 			}
 		}
 		if !found {
 			return nil, fmt.Errorf("agent %q not found in pipeline config", fromAgent)
 		}
-	} else {
-		result = append(result, agents...)
 	}
 
-	agentMap := make(map[string]bool)
-	for _, a := range result {
-		agentMap[a.Name] = true
-	}
-
-	for i := range result {
-		var newDeps []string
-		for _, dep := range result[i].DependsOn {
-			if agentMap[dep] {
-				newDeps = append(newDeps, dep)
-			}
-		}
-		result[i].DependsOn = newDeps
-	}
-
-	return result, nil
+	return agents, nil
 }
 
 func loadPipelineConfig(path string) (*pipelineConfig, error) {
@@ -343,6 +339,28 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 				branchName = cfg.Git.BranchPrefix + ovlName
 			}
 
+			if ag.skip {
+				log.Info("[%s] \033[33mSKIPPED\033[0m: Recovering state...", ag.Name)
+				if store.Exists(ovlName) {
+					if ovl, err := store.Load(ovlName); err == nil {
+						results.Store(ag.Name, pipelineDepResult{
+							Branch:     branchName,
+							MountPoint: ovl.MountPoint,
+						})
+					} else {
+						err = fmt.Errorf("failed to load existing overlay %q: %v", ovlName, err)
+						results.Store(ag.Name, pipelineDepResult{Err: err})
+					}
+				} else {
+					err := fmt.Errorf("state not found for skipped agent %q (dependency branch is missing)", ag.Name)
+					results.Store(ag.Name, pipelineDepResult{Err: err})
+				}
+				resultsMu.Lock()
+				agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 0, Error: ""}
+				resultsMu.Unlock()
+				return
+			}
+
 			opts := &api.CreateOptions{
 				Name:    ovlName,
 				BaseDir: absBaseDir,
@@ -350,23 +368,51 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 			}
 
 			// If we have dependencies, create the new branch from baseBranch, then merge dependency branches into it
-			ovl, err := mgr.Create(opts)
-			if err != nil {
-				err = fmt.Errorf("failed to create overlay: %w", err)
-				results.Store(ag.Name, pipelineDepResult{Err: err})
-				resultsMu.Lock()
-				agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
-				resultsMu.Unlock()
-				return
-			}
+			var ovl *api.Overlay
+			if store.Exists(opts.Name) {
+				log.Info("[%s] Reusing existing overlay %q", ag.Name, opts.Name)
+				var loadErr error
+				ovl, loadErr = store.Load(opts.Name)
+				if loadErr != nil {
+					err = fmt.Errorf("failed to load existing overlay %q: %w", opts.Name, loadErr)
+					results.Store(ag.Name, pipelineDepResult{Err: err})
+					resultsMu.Lock()
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+					resultsMu.Unlock()
+					return
+				}
+				mounted, _ := mgr.IsMounted(ovl)
+				if !mounted {
+					if mountErr := mgr.Mount(ovl); mountErr != nil {
+						err = fmt.Errorf("failed to mount existing overlay %q: %w", opts.Name, mountErr)
+						results.Store(ag.Name, pipelineDepResult{Err: err})
+						resultsMu.Lock()
+						agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+						resultsMu.Unlock()
+						return
+					}
+				}
+			} else {
+				var createErr error
+				ovl, createErr = mgr.Create(opts)
+				if createErr != nil {
+					err = fmt.Errorf("failed to create overlay: %w", createErr)
+					results.Store(ag.Name, pipelineDepResult{Err: err})
+					resultsMu.Lock()
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+					resultsMu.Unlock()
+					return
+				}
 
-			if err := store.Save(ovl); err != nil {
-				mgr.Cleanup(ovl)
-				results.Store(ag.Name, pipelineDepResult{Err: err})
-				resultsMu.Lock()
-				agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
-				resultsMu.Unlock()
-				return
+				if saveErr := store.Save(ovl); saveErr != nil {
+					mgr.Cleanup(ovl)
+					err = fmt.Errorf("failed to save overlay: %w", saveErr)
+					results.Store(ag.Name, pipelineDepResult{Err: err})
+					resultsMu.Lock()
+					agentResults[idx] = agentResult{Name: ag.Name, Agent: ag.Agent, ExitCode: 1, Error: err.Error()}
+					resultsMu.Unlock()
+					return
+				}
 			}
 
 			defer func() {

@@ -141,8 +141,8 @@ phantom run-all ~/myproject --config agents.yaml --model claude-opus-4-5 --timeo
 | `--config, -c` | Path to agents YAML config file |
 | `--agents` | Comma-separated agent commands (simple mode) |
 | `--model, -m` | Model name — overrides `model:` in YAML for all agents. Optional. |
-| `--only` | Run only the agent with this name |
-| `--from` | Start running from the agent with this name (sequentially/overrides selection) |
+| `--only` | Run only the agent with this name (skips other agents but reuses their overlays if available) |
+| `--from` | Start running from the agent with this name (skips preceding agents but reuses their overlays if available) |
 | `--concurrency, -j` | Max concurrency per agent executable type (0 = unlimited) |
 | `--timeout` | Global timeout per agent in minutes |
 | `--cleanup` | Cleanup all overlays after completion |
@@ -188,11 +188,12 @@ phantom run-pipeline ~/myproject --config pipeline.yaml --cleanup --push
 | Flag | Description |
 |------|-------------|
 | `--config, -c` | Path to pipeline YAML config file (required) |
+| `--name, -n` | Pipeline name (overrides config). Reuses existing overlays if found. |
 | `--timeout` | Global timeout per agent in minutes |
 | `--concurrency, -j` | Max concurrency per agent executable type (0 = unlimited) |
 | `--model, -m` | Model name — overrides `model:` in YAML for all agents. Optional. |
-| `--only` | Run only the agent with this name (drops unselected agents from execution) |
-| `--from` | Start running from the agent with this name (skips preceding agents) |
+| `--only` | Run only the agent with this name (skips other agents but reuses their overlays to satisfy dependencies) |
+| `--from` | Start running from the agent with this name (skips preceding agents but reuses their overlays to satisfy dependencies) |
 | `--cleanup` | Cleanup all overlays after completion |
 | `--push` | Push branches to remote on completion |
 | `--format` | Summary format: `table` (default), `json` |

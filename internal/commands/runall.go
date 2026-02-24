@@ -283,12 +283,6 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 		var agentContexts []agentContext
 
 		for _, def := range agents {
-			// Check for name collision
-			if store.Exists(def.Name) {
-				log.Warn("Overlay %q already exists, skipping", def.Name)
-				continue
-			}
-
 			branch := def.Branch
 			if branch == "" && isGit && cfg.Git.AutoBranch {
 				branch = cfg.Git.BranchPrefix + def.Name
@@ -300,10 +294,35 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 				Branch:  branch,
 			}
 
-			ovl, err := mgr.Create(opts)
-			if err != nil {
-				log.Error("Failed to create overlay %q: %v", def.Name, err)
-				continue
+			var ovl *api.Overlay
+			if store.Exists(def.Name) {
+				log.Info("[%s] Reusing existing overlay %q", def.Name, def.Name)
+				var loadErr error
+				ovl, loadErr = store.Load(def.Name)
+				if loadErr != nil {
+					log.Error("Failed to load overlay %q: %v", def.Name, loadErr)
+					continue
+				}
+				mounted, _ := mgr.IsMounted(ovl)
+				if !mounted {
+					if err := mgr.Mount(ovl); err != nil {
+						log.Error("Failed to mount overlay %q: %v", def.Name, err)
+						continue
+					}
+				}
+			} else {
+				var createErr error
+				ovl, createErr = mgr.Create(opts)
+				if createErr != nil {
+					log.Error("Failed to create overlay %q: %v", def.Name, createErr)
+					continue
+				}
+
+				if saveErr := store.Save(ovl); saveErr != nil {
+					mgr.Cleanup(ovl)
+					log.Error("Failed to save state for %q: %v", def.Name, saveErr)
+					continue
+				}
 			}
 
 			// Handle git branch
@@ -320,12 +339,6 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 						log.Warn("[%s] Failed to switch to branch %q: %v", def.Name, branch, err)
 					}
 				}
-			}
-
-			if err := store.Save(ovl); err != nil {
-				mgr.Cleanup(ovl)
-				log.Error("Failed to save state for %q: %v", def.Name, err)
-				continue
 			}
 
 			log.Debug("[%s] Overlay created at %s", def.Name, ovl.MountPoint)

@@ -84,6 +84,22 @@ Independent agents `frontend-agent` and `backend-agent` will run in parallel. Wh
 
 ---
 
+## Resuming / Retrying Jobs
+
+If a pipeline or `run-all` execution fails, stops prematurely, or you wish to retry specific parts from where you left off, use `--from` / `--only` combined with reusing names. Phantom will automatically load and mount your existing overlays and branches, satisfying dependencies.
+
+```bash
+# 1. Pipeline failed while running 'e2e-tests', but 'frontend-agent' and 'backend-agent' were successful.
+# Provide the pipeline --name exactly as it appears in status so Phantom knows which overlays to reuse:
+phantom run-pipeline ~/myproject --config map-reduce.yaml --name map-reduce-feature --from e2e-tests
+```
+
+When resuming with `--from` or `--only`:
+- Preceding or unselected agents will be **skipped**. By retaining the `--name` of your execution, Phantom finds the skipped agents' existing overlays and passes their branches to downstream agents.
+- **Git fetching/merging** dependencies will still work instantly.
+
+---
+
 ## Pipeline: Implement → Test → Lint
 
 Chain agents so each builds on the previous one's work.
