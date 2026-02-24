@@ -42,9 +42,9 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	}
 
 	// Log start
-	r.log.Info("Starting agent: %s", opts.Agent)
-	r.log.Info("Task: %s", opts.Task)
-	r.log.Info("Overlay: %s", ovl.MountPoint)
+	r.log.Info("[%s] Starting agent: %s", ovl.Name, opts.Agent)
+	r.log.Debug("[%s] Task: %s", ovl.Name, opts.Task)
+	r.log.Debug("[%s] Overlay: %s", ovl.Name, ovl.MountPoint)
 
 	// Build the command - parse agent string into command and args
 	// This avoids shell injection by not using sh -c
@@ -162,7 +162,7 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	}
 
 	// Log completion
-	r.log.Info("Agent completed in %s with exit code %d", duration.Round(time.Second), exitCode)
+	r.log.Info("[%s] Agent completed in %s (exit code %d)", ovl.Name, duration.Round(time.Second), exitCode)
 
 	// Write footer to log file
 	if logFile != nil {

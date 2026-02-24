@@ -315,12 +315,14 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 			// Git checkout to new branch from base branch
 			branchExists, _ := gitOps.BranchExists(ctx, ovl.MountPoint, branchName)
 			if !branchExists {
+				log.Info("[%s] Creating branch %q from %q", ag.Name, branchName, baseBranch)
 				if err := gitOps.CreateBranch(ctx, ovl.MountPoint, branchName, baseBranch); err != nil {
-					log.Error("[%s] Failed to create branch %s: %v", ag.Name, branchName, err)
+					log.Error("[%s] Failed to create branch %q: %v", ag.Name, branchName, err)
 				}
 			} else {
+				log.Info("[%s] Switching to branch %q", ag.Name, branchName)
 				if err := gitOps.SwitchBranch(ctx, ovl.MountPoint, branchName); err != nil {
-					log.Error("[%s] Failed to switch to branch %s: %v", ag.Name, branchName, err)
+					log.Error("[%s] Failed to switch to branch %q: %v", ag.Name, branchName, err)
 				}
 			}
 
@@ -331,6 +333,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 					val, _ := results.Load(depName)
 					depRes := val.(pipelineDepResult)
 					if depRes.Branch != "" && depRes.MountPoint != "" {
+						log.Info("[%s] Fetching dependency %q", ag.Name, depName)
 						fetchErr := gitOps.FetchFrom(ctx, ovl.MountPoint, depRes.MountPoint, depRes.Branch)
 						if fetchErr != nil {
 							err := fmt.Errorf("failed to fetch from dependency %s: %w", depName, fetchErr)
@@ -342,6 +345,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 							return
 						}
 
+						log.Info("[%s] Merging dependency %q", ag.Name, depName)
 						err := gitOps.MergeBranchNoEdit(ctx, ovl.MountPoint, "FETCH_HEAD")
 						if err != nil {
 							// If there's a conflict, err might be non-nil. Check unmerged files.

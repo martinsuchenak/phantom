@@ -307,12 +307,14 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 			if isGit && branch != "" {
 				branchExists, _ := gitOps.BranchExists(childCtx, absBaseDir, branch)
 				if !branchExists {
+					log.Info("Creating branch %q", branch)
 					if err := gitOps.CreateBranch(childCtx, ovl.MountPoint, branch, ""); err != nil {
-						log.Warn("Failed to create branch %s: %v", branch, err)
+						log.Warn("Failed to create branch %q: %v", branch, err)
 					}
 				} else {
+					log.Info("Switching to branch %q", branch)
 					if err := gitOps.SwitchBranch(childCtx, ovl.MountPoint, branch); err != nil {
-						log.Warn("Failed to switch to branch %s: %v", branch, err)
+						log.Warn("Failed to switch to branch %q: %v", branch, err)
 					}
 				}
 			}
@@ -321,7 +323,7 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 				mgr.Cleanup(ovl)
 				return fmt.Errorf("failed to save overlay state: %w", err)
 			}
-			log.Info("Created overlay %q at %s", name, ovl.MountPoint)
+			log.Debug("Created overlay %q at %s", name, ovl.MountPoint)
 		}
 
 		results = make([]agentResult, 0, len(steps))

@@ -303,12 +303,14 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 			if isGit && branch != "" {
 				branchExists, _ := gitOps.BranchExists(childCtx, absBaseDir, branch)
 				if !branchExists {
+					log.Info("[%s] Creating branch %q", def.Name, branch)
 					if err := gitOps.CreateBranch(childCtx, ovl.MountPoint, branch, ""); err != nil {
-						log.Warn("[%s] Failed to create branch %s: %v", def.Name, branch, err)
+						log.Warn("[%s] Failed to create branch %q: %v", def.Name, branch, err)
 					}
 				} else {
+					log.Info("[%s] Switching to branch %q", def.Name, branch)
 					if err := gitOps.SwitchBranch(childCtx, ovl.MountPoint, branch); err != nil {
-						log.Warn("[%s] Failed to switch to branch %s: %v", def.Name, branch, err)
+						log.Warn("[%s] Failed to switch to branch %q: %v", def.Name, branch, err)
 					}
 				}
 			}
@@ -319,7 +321,7 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 				continue
 			}
 
-			log.Info("[%s] Overlay created at %s", def.Name, ovl.MountPoint)
+			log.Debug("[%s] Overlay created at %s", def.Name, ovl.MountPoint)
 			agentContexts = append(agentContexts, agentContext{def: def, ovl: ovl})
 		}
 
