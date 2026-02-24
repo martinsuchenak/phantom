@@ -103,6 +103,8 @@ func (pt *ProgressTree) render() {
 		}
 	}
 
+	visited := make(map[string]bool)
+
 	var doPrint func(node, prefix string, isLast bool)
 	doPrint = func(node, prefix string, isLast bool) {
 		state := pt.states[node]
@@ -140,6 +142,12 @@ func (pt *ProgressTree) render() {
 		}
 
 		line := fmt.Sprintf("%s%s %s %s [%s]\033[0m", prefix, connector, icon, color+node, state)
+		if visited[node] {
+			line += " \033[90m(deduped)\033[0m"
+			output = append(output, line)
+			return
+		}
+		visited[node] = true
 		output = append(output, line)
 
 		childs := children[node]
