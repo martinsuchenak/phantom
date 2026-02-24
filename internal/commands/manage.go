@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/internal/state"
@@ -94,7 +95,7 @@ func RunInteractiveManage(ctx context.Context, mgr overlayManager, store *state.
 		AssistantLabel: "Result",
 		SystemLabel:    "Info",
 		StatusLeft:     "phantom manage",
-		StatusRight:    "/menu • /start • /run • /run-all • /run-chain • /health • /prune • /gc • /exit",
+		StatusRight:    "/menu • /start • /run • /run-all • /run-chain • /run-pipeline • /health • /prune • /gc • /exit",
 		OnEscape:       func() { t.AddMessage(tui.RoleSystem, "Type /menu to open the dashboard, /exit to quit.") },
 		OnSubmit: func(text string) {
 			text = strings.TrimSpace(text)
@@ -187,6 +188,24 @@ func RunInteractiveManage(ctx context.Context, mgr overlayManager, store *state.
 						return
 					}
 					go runTUIRunChain(ctx, t, parts[0], parts[1], model)
+				},
+			},
+			{
+				Name:        "run-pipeline",
+				Description: "Run a DAG pipeline: /run-pipeline <base-dir> <config.yaml> [--model <model>]",
+				Handler: func(args string) {
+					args = strings.TrimSpace(args)
+					model := ""
+					if idx := strings.Index(args, "--model "); idx != -1 {
+						model = strings.Fields(args[idx+8:])[0]
+						args = strings.TrimSpace(args[:idx])
+					}
+					parts := strings.Fields(args)
+					if len(parts) < 2 {
+						t.AddMessage(tui.RoleSystem, "Usage: /run-pipeline <base-dir> <config.yaml> [--model <model>]")
+						return
+					}
+					go runTUIRunPipeline(ctx, t, parts[0], parts[1], model)
 				},
 			},
 			{Name: "health", Description: "Run a system health check", Handler: func(_ string) { runHealthInner(t, mgr, store, false) }},
@@ -1599,6 +1618,16 @@ func runTUIRun(ctx context.Context, t *tui.TUI, baseDir, agentCmd, task, model, 
 // runTUIRunAll loads an agents config file and runs all agents in parallel.
 // model is an optional global model override (empty = use per-agent config).
 func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
+	if !filepath.IsAbs(configPath) {
+		if abs, err := filepath.Abs(configPath); err == nil {
+			configPath = abs
+		}
+	}
+	if !filepath.IsAbs(baseDir) {
+		if abs, err := filepath.Abs(baseDir); err == nil {
+			baseDir = abs
+		}
+	}
 	t.StartSpinner(fmt.Sprintf("Loading agents from %s…", configPath))
 	agents, err := loadAgentsConfig(configPath)
 	t.StopSpinner()
@@ -1630,7 +1659,68 @@ func runTUIRunAll(ctx context.Context, t *tui.TUI, baseDir, configPath, model st
 
 // runTUIRunChain loads a chain config file and runs steps sequentially.
 // model is an optional global model override (empty = use per-step config).
+// tuiNotifier implements pipelineNotifier for the interactive TUI.
+// State transitions are posted as per-agent messages; a markdown summary
+// table is posted once all agents finish.
+type tuiNotifier struct {
+	t *tui.TUI
+}
+
+func (n *tuiNotifier) Update(agent string, state AgentState) {
+	n.t.AddMessageAs(tui.RoleSystem, agent, fmt.Sprintf("%s %s", stateIcon(state), state))
+}
+
+func (n *tuiNotifier) Logf(format string, args ...any) {
+	n.t.AddMessageAs(tui.RoleSystem, "pipeline", fmt.Sprintf(format, args...))
+}
+
+func (n *tuiNotifier) Errorf(format string, args ...any) {
+	n.t.AddMessageAs(tui.RoleSystem, "pipeline", "❌ "+fmt.Sprintf(format, args...))
+}
+
+func (n *tuiNotifier) Clear() {} // no-op — TUI messages are persistent
+
+func (n *tuiNotifier) Summary(results []agentResult) {
+	if len(results) == 0 {
+		return
+	}
+	var sb strings.Builder
+	sb.WriteString("| Agent | Command | Exit | Duration | Status |\n")
+	sb.WriteString("|-------|---------|------|----------|--------|\n")
+	failed := 0
+	for _, r := range results {
+		status := "✅ ok"
+		if r.ExitCode == -1 {
+			status = "⏭️ skipped"
+		} else if r.ExitCode != 0 || r.Error != "" {
+			status = "❌ failed"
+			failed++
+		}
+		sb.WriteString(fmt.Sprintf("| %s | `%s` | %d | %s | %s |\n",
+			r.Name, r.Agent, r.ExitCode, formatDuration(r.Duration), status))
+	}
+	sb.WriteString("\n")
+	if failed > 0 {
+		sb.WriteString(fmt.Sprintf("**%d/%d agent(s) failed.**", failed, len(results)))
+	} else {
+		sb.WriteString(fmt.Sprintf("**All %d agent(s) completed successfully.**", len(results)))
+	}
+	n.t.AddMessageAs(tui.RoleAssistant, "pipeline summary", sb.String())
+}
+
 func runTUIRunPipeline(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
+	// Resolve paths relative to cwd so users don't need to type absolute paths
+	if !filepath.IsAbs(configPath) {
+		if abs, err := filepath.Abs(configPath); err == nil {
+			configPath = abs
+		}
+	}
+	if !filepath.IsAbs(baseDir) {
+		if abs, err := filepath.Abs(baseDir); err == nil {
+			baseDir = abs
+		}
+	}
+
 	t.StartSpinner(fmt.Sprintf("Loading pipeline from %s…", configPath))
 	pc, err := loadPipelineConfig(configPath)
 	t.StopSpinner()
@@ -1642,6 +1732,12 @@ func runTUIRunPipeline(ctx context.Context, t *tui.TUI, baseDir, configPath, mod
 		t.AddMessage(tui.RoleSystem, "run-pipeline: no agents defined in config.")
 		return
 	}
+
+	// Mirror the name fallback from doRunPipeline
+	if pc.Name == "" {
+		pc.Name = fmt.Sprintf("pipeline-%d", time.Now().Unix())
+	}
+
 	if model != "" {
 		for i := range pc.Agents {
 			if pc.Agents[i].Model == "" {
@@ -1653,19 +1749,28 @@ func runTUIRunPipeline(ctx context.Context, t *tui.TUI, baseDir, configPath, mod
 		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Running pipeline %q (%d agent(s))…", pc.Name, len(pc.Agents)))
 	}
 
+	notifier := &tuiNotifier{t: t}
 	oldLog := log
 	log = &tuiLogger{t: t}
-	err = processRunPipeline(ctx, baseDir, pc, 0, 0, false, false, "table")
+	err = processRunPipeline(ctx, baseDir, pc, 0, 0, false, false, "table", notifier)
 	log = oldLog
 
 	if err != nil {
 		t.AddMessage(tui.RoleSystem, "run-pipeline failed: "+err.Error())
-	} else {
-		t.AddMessage(tui.RoleSystem, fmt.Sprintf("Pipeline %q complete.", pc.Name))
 	}
 }
 
 func runTUIRunChain(ctx context.Context, t *tui.TUI, baseDir, configPath, model string) {
+	if !filepath.IsAbs(configPath) {
+		if abs, err := filepath.Abs(configPath); err == nil {
+			configPath = abs
+		}
+	}
+	if !filepath.IsAbs(baseDir) {
+		if abs, err := filepath.Abs(baseDir); err == nil {
+			baseDir = abs
+		}
+	}
 	t.StartSpinner(fmt.Sprintf("Loading chain from %s…", configPath))
 	chainCfg, err := loadChainConfig(configPath)
 	t.StopSpinner()

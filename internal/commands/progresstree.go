@@ -20,6 +20,22 @@ const (
 	StateFailed   AgentState = "Failed"
 )
 
+// pipelineNotifier is the interface processRunPipeline uses to report progress.
+// ProgressTree implements it for terminal output; tuiNotifier implements it for
+// the interactive TUI.
+type pipelineNotifier interface {
+	// Update sets the displayed state for an agent.
+	Update(agent string, state AgentState)
+	// Logf posts an informational message attributed to an agent.
+	Logf(format string, args ...any)
+	// Errorf posts an error message attributed to an agent.
+	Errorf(format string, args ...any)
+	// Summary is called once after all agents finish with the final results.
+	Summary(results []agentResult)
+	// Clear removes any live-rendered UI (no-op for TUI).
+	Clear()
+}
+
 // ProgressTree manages the terminal UI for the pipeline
 type ProgressTree struct {
 	mu     sync.Mutex
@@ -205,3 +221,7 @@ func (pt *ProgressTree) Clear() {
 		pt.lines = 0
 	}
 }
+
+// Summary is a no-op for ProgressTree — the terminal summary is printed by
+// printRunAllSummary after the tree is cleared.
+func (pt *ProgressTree) Summary(_ []agentResult) {}
