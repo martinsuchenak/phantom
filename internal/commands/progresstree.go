@@ -81,6 +81,27 @@ func (pt *ProgressTree) Errorf(format string, args ...any) {
 	pt.render()
 }
 
+func stateColor(s AgentState) string {
+	switch s {
+	case StatePending:
+		return "\033[90m" // dark grey
+	case StateSkipped:
+		return "\033[33m" // yellow
+	case StateStarting, StateFetching, StateMerging:
+		return "\033[36m" // cyan
+	case StateQueued:
+		return "\033[35m" // magenta
+	case StateRunning:
+		return "\033[34m" // blue
+	case StateDone:
+		return "\033[32m" // green
+	case StateFailed:
+		return "\033[31m" // red
+	default:
+		return ""
+	}
+}
+
 func stateIcon(s AgentState) string {
 	switch s {
 	case StatePending:
@@ -104,103 +125,75 @@ func stateIcon(s AgentState) string {
 
 func (pt *ProgressTree) render() {
 	if pt.lines > 0 {
-		fmt.Printf("\033[%dA\033[J", pt.lines) // Clear previously rendered lines
+		fmt.Printf("\033[%dA\033[J", pt.lines)
 	}
+
+	// Compute column widths from agent names (visible chars only)
+	nameWidth := len("AGENT")
+	for _, a := range pt.agents {
+		if len(a.Name) > nameWidth {
+			nameWidth = len(a.Name)
+		}
+	}
+
+	// Fixed status column: widest visible status string is "⚙️  Fetching" ~ "  Fetching" = 10 chars + icon width
+	// We pad the visible portion: icon(2) + space + state name. Longest state name = "Starting" (8).
+	// Use a fixed visible width of 14 for the status cell.
+	statusWidth := 14
 
 	var output []string
-	output = append(output, "\n\033[1m🚀 Pipeline Progress\033[0m\n")
+	output = append(output, "")
 
-	children := make(map[string][]string)
-	agentDeps := make(map[string][]string)
-	roots := []string{}
+	// Header
+	header := fmt.Sprintf("  \033[1m%-*s  %-*s  %s\033[0m",
+		nameWidth, "AGENT",
+		statusWidth, "STATUS",
+		"WAITING ON")
+	sep := fmt.Sprintf("  %s  %s  %s",
+		strings.Repeat("─", nameWidth),
+		strings.Repeat("─", statusWidth),
+		strings.Repeat("─", 20))
+	output = append(output, header)
+	output = append(output, sep)
 
 	for _, a := range pt.agents {
-		agentDeps[a.Name] = a.DependsOn
-		if len(a.DependsOn) == 0 {
-			roots = append(roots, a.Name)
-		}
-		for _, dep := range a.DependsOn {
-			children[dep] = append(children[dep], a.Name)
-		}
-	}
+		state := pt.states[a.Name]
+		icon := stateIcon(state)
+		color := stateColor(state)
 
-	visited := make(map[string]bool)
+		// Build visible status string for padding calc, then colorize
+		visibleStatus := fmt.Sprintf("%s %s", icon, state)
+		// Pad to statusWidth using visible length (no ANSI codes in visibleStatus yet)
+		padded := visibleStatus + strings.Repeat(" ", max(0, statusWidth-len(visibleStatus)))
+		statusCell := color + padded + "\033[0m"
 
-	var doPrint func(node, prefix string, isLast bool)
-	doPrint = func(node, prefix string, isLast bool) {
-		if visited[node] {
-			return
-		}
-		visited[node] = true
-
-		state := pt.states[node]
-
-		var icon string
-		var color string
-		switch state {
-		case StatePending:
-			icon = "⏳"
-			color = "\033[90m" // dark grey
-		case StateSkipped:
-			icon = "⏭️ "
-			color = "\033[33m" // yellow
-		case StateStarting, StateFetching, StateMerging:
-			icon = "⚙️ "
-			color = "\033[36m" // cyan
-		case StateQueued:
-			icon = "⏸️ "
-			color = "\033[35m" // magenta
-		case StateRunning:
-			icon = "🏃"
-			color = "\033[34m" // blue
-		case StateDone:
-			icon = "✅"
-			color = "\033[32m" // green
-		case StateFailed:
-			icon = "❌"
-			color = "\033[31m" // red
-		}
-
-		connector := "├──"
-		if isLast {
-			connector = "└──"
-		}
-
-		line := fmt.Sprintf("%s%s %s %s [%s]\033[0m", prefix, connector, icon, color+node, state)
-
-		// Append live "needs" suffix for nodes with dependencies
-		deps := agentDeps[node]
-		if len(deps) > 0 {
-			parts := make([]string, 0, len(deps))
-			for _, dep := range deps {
+		// Build waiting-on column
+		waitOn := ""
+		if len(a.DependsOn) > 0 {
+			parts := make([]string, 0, len(a.DependsOn))
+			for _, dep := range a.DependsOn {
 				parts = append(parts, fmt.Sprintf("%s %s", dep, stateIcon(pt.states[dep])))
 			}
-			line += fmt.Sprintf(" \033[90m(needs: %s)\033[0m", strings.Join(parts, ", "))
+			waitOn = "\033[90m" + strings.Join(parts, ", ") + "\033[0m"
 		}
 
+		nameCell := fmt.Sprintf("%-*s", nameWidth, a.Name)
+		line := fmt.Sprintf("  %s  %s  %s", nameCell, statusCell, waitOn)
 		output = append(output, line)
-
-		childs := children[node]
-		for i, child := range childs {
-			childPrefix := prefix
-			if isLast {
-				childPrefix += "    "
-			} else {
-				childPrefix += "│   "
-			}
-			doPrint(child, childPrefix, i == len(childs)-1)
-		}
 	}
 
-	for i, root := range roots {
-		doPrint(root, "", i == len(roots)-1)
-	}
-
-	output = append(output, "") // Extra blank line at the end
+	output = append(output, "") // trailing blank line
 	outStr := strings.Join(output, "\n")
 	fmt.Print(outStr)
 
 	pt.lines = strings.Count(outStr, "\n")
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Clear removes the progress tree from screen
