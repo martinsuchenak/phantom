@@ -115,7 +115,7 @@ type agentResult struct {
 }
 
 func doRunAll(ctx context.Context, cmd *cli.Command) error {
-	baseDir := cmd.GetStringArg("base-dir")
+	baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
 	configPath := cmd.GetString("config")
 	agentsInline := cmd.GetString("agents")
 	timeoutMinutes := cmd.GetInt("timeout")

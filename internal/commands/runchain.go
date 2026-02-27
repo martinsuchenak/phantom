@@ -110,7 +110,7 @@ func NewRunChainCommand() *cli.Command {
 }
 
 func doRunChain(ctx context.Context, cmd *cli.Command) error {
-	baseDir := cmd.GetStringArg("base-dir")
+	baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
 	configPath := cmd.GetString("config")
 	stepsInline := cmd.GetString("steps")
 	name := cmd.GetString("name")

@@ -84,7 +84,7 @@ func NewRunCommand() *cli.Command {
 }
 
 func doRun(ctx context.Context, cmd *cli.Command) error {
-	baseDir := cmd.GetStringArg("base-dir")
+	baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
 	agentCmd := cmd.GetString("agent")
 	task := cmd.GetString("task")
 	model := cmd.GetString("model")

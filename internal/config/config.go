@@ -17,8 +17,9 @@ type Config struct {
 	Git      Git      `yaml:"git"`
 	Darwin   Darwin   `yaml:"darwin"`
 	Linux    Linux    `yaml:"linux"`
-	Agent    Agent    `yaml:"agent"`
-	AgentEnv []string `yaml:"agent_env"`
+	Agent    Agent             `yaml:"agent"`
+	AgentEnv []string          `yaml:"agent_env"`
+	Projects map[string]string `yaml:"projects"`
 }
 
 // Paths allows overriding individual directory locations
@@ -118,6 +119,7 @@ func DefaultConfig() *Config {
 		AgentEnv: []string{
 			"OVERLAY_ENABLED=true",
 		},
+		Projects: make(map[string]string),
 	}
 }
 
@@ -154,6 +156,11 @@ func Load(path string) (*Config, error) {
 	cfg.Paths.Mounts = expandHome(cfg.Paths.Mounts)
 	cfg.Paths.Logs = expandHome(cfg.Paths.Logs)
 	cfg.Paths.Snapshots = expandHome(cfg.Paths.Snapshots)
+
+	// Ensure Projects map is initialized if missing from yaml
+	if cfg.Projects == nil {
+		cfg.Projects = make(map[string]string)
+	}
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {

@@ -524,6 +524,27 @@ phantom init
 phantom init --output /path/to/dir --force
 ```
 
+### `phantom project`
+
+Manage registered projects. This allows using a short project name instead of absolute directory paths for any command that accepts a base directory.
+
+```bash
+phantom project add myapp /path/to/my/app
+phantom project list
+phantom project remove myapp
+
+# Use the short name 'myapp' instead of a full path
+phantom start myapp -n my-feature
+phantom run myapp -a aider -t "fix bug"
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `add <name> <path>` | Register a new project and map its base directory path |
+| `list` | List all registered projects and their paths |
+| `remove <name>` | Delete a project mapping |
+
+
 ### `phantom config`
 
 ```bash

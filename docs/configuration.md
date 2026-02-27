@@ -43,6 +43,9 @@ agent:
 
 agent_env:
   - "OVERLAY_ENABLED=true"       # extra env vars passed to agents
+
+projects:                        # project names mapped to absolute paths
+  myapp: "/Users/user/Projects/myapp"
 ```
 
 ### Validation Rules

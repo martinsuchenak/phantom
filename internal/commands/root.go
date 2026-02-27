@@ -99,6 +99,7 @@ func Execute() {
 			NewGCCommand(),
 			NewConfigCommand(),
 			NewManageCommand(),
+			NewProjectCommand(),
 			cli.GenerateCompletionCommand(),
 		},
 		PreRun: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {

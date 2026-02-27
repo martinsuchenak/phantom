@@ -101,7 +101,7 @@ make install      # -> /usr/local/bin/phantom
 | `snapshot` / `export` / `clone` | Save, export, duplicate overlays |
 | `lock` / `unlock` / `pin` / `unpin` | Protect overlays from cleanup and base drift |
 | `prune` / `gc` / `health` / `rename` | Maintenance, diagnostics, and renaming |
-| `config` / `init` / `template` | Configuration and scaffolding |
+| `config` / `init` / `template` / `project` | Configuration, tracking, and scaffolding |
 | `completion` | Shell completion (bash, zsh, fish, powershell) |
 
 See [docs/commands.md](docs/commands.md) for the full reference.

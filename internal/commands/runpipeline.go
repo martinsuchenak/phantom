@@ -107,7 +107,7 @@ func NewRunPipelineCommand() *cli.Command {
 }
 
 func doRunPipeline(ctx context.Context, cmd *cli.Command) error {
-	baseDir := cmd.GetStringArg("base-dir")
+	baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
 	configPath := cmd.GetString("config")
 	pipelineName := cmd.GetString("name")
 	timeoutMinutes := cmd.GetInt("timeout")

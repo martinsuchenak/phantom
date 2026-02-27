@@ -50,7 +50,7 @@ func NewStartCommand() *cli.Command {
 }
 
 func doStart(ctx context.Context, cmd *cli.Command) error {
-	baseDir := cmd.GetStringArg("base-dir")
+	baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
 	if baseDir == "" {
 		return fmt.Errorf("base directory is required")
 	}
