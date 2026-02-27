@@ -338,6 +338,18 @@ phantom apply feature-a --stop --cleanup
 | `--stop` | Stop overlay after applying |
 | `--cleanup` | Cleanup overlay data (implies `--stop`) |
 
+### `phantom revert <name> <path>`
+
+Revert a file or directory in an overlay to its base state. This removes any modifications, additions, or deletions made in the overlay for that specific path.
+
+```bash
+# Revert a modified config file in an overlay
+phantom revert feature-agent config/database.yml
+
+# Revert an entire directory
+phantom revert feature-agent src/components/
+```
+
 For git repos: auto-commits, then merges overlay branch into base. For non-git: copies changed files, removes deleted ones.
 
 ### `phantom merge <source> <target>`

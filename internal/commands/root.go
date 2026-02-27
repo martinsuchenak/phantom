@@ -72,6 +72,7 @@ func Execute() {
 			NewPruneCommand(),
 			NewCommitCommand(),
 			NewApplyCommand(),
+			NewRevertCommand(),
 			NewLogsCommand(),
 			NewRestartCommand(),
 			NewRunAllCommand(),
