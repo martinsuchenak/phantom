@@ -15,7 +15,7 @@ Global flags available on all commands:
 
 ### `phantom start <base-dir>`
 
-Create and mount a new overlay filesystem.
+Create and mount a new overlay filesystem. `<base-dir>` can be a directory path or a registered [project](#phantom-project).
 
 ```bash
 phantom start /path/to/repo -n feature-a
@@ -94,7 +94,7 @@ phantom status feature-a --format json
 
 ### `phantom run <base-dir>`
 
-Run a single agent in an overlay context.
+Run a single agent in an overlay context. `<base-dir>` can be a directory path or a registered [project](#phantom-project).
 
 ```bash
 phantom run ~/myproject --agent "claude --print --dangerously-skip-permissions --model {model}" --task "implement auth"
@@ -128,7 +128,7 @@ Environment variables set for the agent:
 
 ### `phantom run-all <base-dir>`
 
-Run multiple agents in parallel, each in its own overlay.
+Run multiple agents in parallel, each in its own overlay. `<base-dir>` can be a directory path or a registered [project](#phantom-project).
 
 ```bash
 phantom run-all ~/myproject --config agents.yaml
@@ -153,7 +153,7 @@ Config file supports `mode: sequential` to run agents on a single overlay instea
 
 ### `phantom run-chain <base-dir>`
 
-Run agents sequentially on a single overlay. Each step builds on the previous one's work.
+Run agents sequentially on a single overlay. Each step builds on the previous one's work. `<base-dir>` can be a directory path or a registered [project](#phantom-project).
 
 ```bash
 phantom run-chain ~/myproject --config chain.yaml
@@ -178,7 +178,7 @@ phantom run-chain ~/myproject --config chain.yaml --model claude-sonnet-4 --cont
 
 ### `phantom run-pipeline <base-dir>`
 
-Run agents in a direct acyclic graph (DAG) pipeline, enabling parallel workers that funnel into sequential merges via dependency relationships.
+Run agents in a direct acyclic graph (DAG) pipeline, enabling parallel workers that funnel into sequential merges via dependency relationships. `<base-dir>` can be a directory path or a registered [project](#phantom-project).
 
 ```bash
 phantom run-pipeline ~/myproject --config pipeline.yaml
