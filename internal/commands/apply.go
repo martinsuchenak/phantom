@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/martinsuchenak/phantom/internal/git"
+	"github.com/martinsuchenak/phantom/internal/ignore"
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
@@ -91,6 +92,11 @@ func processApply(ctx context.Context, name string, dryRun, doStop, doCleanup bo
 	gitOps := git.NewOperations()
 	isBaseGit, _ := gitOps.IsGitRepo(ctx, ovl.BaseDir)
 	isMountGit, _ := gitOps.IsGitRepo(ctx, ovl.MountPoint)
+
+	// Validate protected paths before applying any changes
+	if err := validateProtectedPaths(ovl); err != nil {
+		return err
+	}
 
 	if isBaseGit && isMountGit && ovl.Branch != "" {
 		err = applyGit(ctx, ovl, gitOps, dryRun)
@@ -283,5 +289,67 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+// validateProtectedPaths checks if the overlay attempts to modify any paths protected by .phantomignore
+func validateProtectedPaths(ovl *api.Overlay) error {
+	ignorePath := filepath.Join(ovl.BaseDir, ".phantomignore")
+	if _, err := os.Stat(ignorePath); os.IsNotExist(err) {
+		return nil // No ignore file, nothing to protect
+	}
+
+	f, err := os.Open(ignorePath)
+	if err != nil {
+		return fmt.Errorf("failed to open .phantomignore: %w", err)
+	}
+	defer f.Close()
+
+	matcher, err := ignore.NewMatcher(f)
+	if err != nil {
+		return fmt.Errorf("failed to parse .phantomignore: %w", err)
+	}
+
+	if ovl.UpperDir == "" {
+		return nil // No upper dir, nothing changed
+	}
+
+	err = filepath.Walk(ovl.UpperDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(ovl.UpperDir, path)
+		if err != nil || relPath == "." {
+			return nil
+		}
+
+		// Skip work directory internals
+		if strings.HasPrefix(relPath, "work/") || relPath == "work" {
+			return nil
+		}
+
+		// Handle deletions (whiteouts)
+		baseName := filepath.Base(path)
+		if strings.HasPrefix(baseName, ".wh.") {
+			deletedName := strings.TrimPrefix(baseName, ".wh.")
+			targetPath := filepath.Join(filepath.Dir(relPath), deletedName)
+			if matched, rule := matcher.Match(targetPath); matched {
+				return fmt.Errorf("overlay attempts to delete protected path: %s (matches rule: %q)", targetPath, rule)
+			}
+			return nil
+		}
+
+		// For files and directories, check if they match protected paths
+		if matched, rule := matcher.Match(relPath); matched {
+			if info.IsDir() {
+				return fmt.Errorf("overlay attempts to modify protected directory: %s (matches rule: %q)", relPath, rule)
+			}
+			return fmt.Errorf("overlay attempts to modify protected file: %s (matches rule: %q)", relPath, rule)
+		}
+
+		return nil
+	})
+
 	return err
 }

@@ -323,6 +323,9 @@ phantom commit feature-a -m "implement auth" --push
 
 Apply overlay changes to the base directory.
 
+> [!IMPORTANT]
+> **Path Protection (Blast Radius Control)**: If a `.phantomignore` file exists in the repository root, `phantom apply` will validate that no protected files or directories have been modified in the overlay. If any violation is found, the apply operation is rejected.
+
 ```bash
 phantom apply feature-a
 phantom apply feature-a --dry-run
