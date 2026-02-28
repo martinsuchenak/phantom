@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/paularlott/cli"
 )
@@ -93,31 +94,118 @@ func doConflicts(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Find conflicts (files changed by more than one overlay)
-	var conflicts []conflictEntry
+	type detailedConflict struct {
+		File        string   `json:"file"`
+		Overlays    []string `json:"overlays"`
+		IsHard      bool     `json:"is_hard"` // True if it's a non-git repo or a git hunk conflict
+		Description string   `json:"description"`
+	}
+	var conflicts []detailedConflict
+
+	gitOps := git.NewOperations()
+
 	for file, overlays := range fileMap {
 		if len(overlays) > 1 {
-			conflicts = append(conflicts, conflictEntry{File: file, Overlays: overlays})
+			isHard := true
+			desc := "Hard Conflict (Overwrite)"
+
+			// Check if base is a git repo. If so, try to see if git can auto-merge it.
+			// We need to pick two overlays to check at a time. For simplicity, we just check the first vs the second.
+			// In reality, if 3+ overlays touch a file, it's increasingly likely to be a hard conflict.
+			if len(overlays) == 2 {
+				// We need the base dir from one of the overlays
+				ovl, _ := store.Load(overlays[0])
+				if ovl != nil {
+					isGit, _ := gitOps.IsGitRepo(ctx, ovl.BaseDir)
+					if isGit {
+						ovl1, _ := store.Load(overlays[0])
+						ovl2, _ := store.Load(overlays[1])
+						baseFile := filepath.Join(ovl.BaseDir, file)
+						ourFile := filepath.Join(ovl1.UpperDir, file)
+						theirFile := filepath.Join(ovl2.UpperDir, file)
+
+						// If base file doesn't exist, we use an empty file as the common ancestor
+						// or just consider it a hard conflict if both created it with different contents.
+						// git merge-file handles non-existent base poorly if we don't pass an empty file.
+						// For now, let's just create an empty temp file if base doesn't exist.
+						if _, err := os.Stat(baseFile); os.IsNotExist(err) {
+							tmpBase, err := os.CreateTemp("", "phantom-empty-base-*")
+							if err == nil {
+								// defer removal
+								defer os.Remove(tmpBase.Name())
+								tmpBase.Close()
+								baseFile = tmpBase.Name()
+							}
+						}
+
+						hasConflict, err := gitOps.CheckFileConflict(ctx, ovl.BaseDir, baseFile, ourFile, theirFile)
+						if err == nil {
+							if hasConflict {
+								isHard = true
+								desc = "Hard Conflict (Git)"
+							} else {
+								isHard = false
+								desc = "Clean Merge (Git)"
+							}
+						}
+					}
+				}
+			} else {
+				desc = "Hard Conflict (3+ Overlays)"
+			}
+
+			conflicts = append(conflicts, detailedConflict{
+				File:        file,
+				Overlays:    overlays,
+				IsHard:      isHard,
+				Description: desc,
+			})
 		}
 	}
 
 	if len(conflicts) == 0 {
-		log.Info("No conflicts detected between %d overlays", len(names))
+		log.Info("No conflicts detected between %d overlays (Confidence: 100%%)", len(names))
 		return nil
 	}
 
+	// Calculate confidence score
+	score := 100
+	for _, c := range conflicts {
+		if c.IsHard {
+			score -= 20
+		} else {
+			score -= 2
+		}
+	}
+	if score < 0 {
+		score = 0
+	}
+
 	if format == "json" {
-		data, _ := json.MarshalIndent(conflicts, "", "  ")
+		out := struct {
+			Conflicts []detailedConflict `json:"conflicts"`
+			Score     int                `json:"confidence_score"`
+		}{
+			Conflicts: conflicts,
+			Score:     score,
+		}
+		data, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(data))
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "FILE\tOVERLAYS")
+	fmt.Fprintln(w, "STATUS\tFILE\tOVERLAYS")
 	for _, c := range conflicts {
-		fmt.Fprintf(w, "%s\t%s\n", c.File, strings.Join(c.Overlays, ", "))
+		fmt.Fprintf(w, "%s\t%s\t%s\n", c.Description, c.File, strings.Join(c.Overlays, ", "))
 	}
 	w.Flush()
 	fmt.Println()
-	log.Info("%d conflicting file(s) detected", len(conflicts))
+	log.Info("%d overlapping file(s) detected", len(conflicts))
+	log.Info("Merge Confidence Score: %d%%", score)
+
+	if score < 50 {
+		log.Info("Warning: Low confidence. Manual review highly recommended before running 'phantom apply'.")
+	}
 	return nil
 }

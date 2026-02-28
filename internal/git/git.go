@@ -243,3 +243,29 @@ func (g *Operations) RebaseAbort(ctx context.Context, repoPath string) error {
 	_, err := g.runGit(ctx, repoPath, "rebase", "--abort")
 	return err
 }
+
+// CheckFileConflict uses git merge-file to determine if a 3-way merge between a base file,
+// our file, and their file would result in a hard conflict.
+// Returns true if there is a conflict, false if it merges cleanly.
+func (g *Operations) CheckFileConflict(ctx context.Context, repoPath, baseFile, ourFile, theirFile string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", "merge-file", "-p", "-q", ourFile, baseFile, theirFile)
+	cmd.Dir = repoPath
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_DISCOVERY_ACROSS_FILESYSTEM=1")
+
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// git merge-file returns exit code > 0 if there are conflicts
+			if exitErr.ExitCode() > 0 {
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("git merge-file failed: %w", err)
+	}
+
+	// Exit code 0 means clean merge
+	return false, nil
+}

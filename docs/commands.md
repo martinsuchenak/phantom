@@ -251,14 +251,18 @@ Files changed in both overlays are flagged as "identical change" or "⚠ diverge
 
 ### `phantom conflicts "<names>"`
 
-Detect file conflicts between two or more overlays.
+Detect file conflicts between two or more overlays and calculate a **Merge Confidence Score**.
 
 ```bash
 phantom conflicts "feature-a feature-b"
 phantom conflicts "auth-agent api-agent test-agent" --format json
 ```
 
-Reports which files were changed by more than one overlay.
+Reports which files were changed by more than one overlay. For Git-tracked repositories, it performs a 3-way merge simulation to distinguish between:
+- **Clean Merge (Git)**: Overlays touch the same file but in different locations; Git can auto-merge them.
+- **Hard Conflict (Git)**: Overlays touch the same lines; manual resolution will be required.
+
+The command outputs a **Merge Confidence Score** (0-100%) indicating the safety of applying these overlays together. For non-Git repositories, any file overlap is treated as a hard conflict (overwrite).
 
 ### `phantom watch <name>`
 
