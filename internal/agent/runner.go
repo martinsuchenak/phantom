@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/config"
@@ -151,10 +152,41 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 	// Set environment variables
 	cmd.Env = r.buildEnv(ovl, opts)
 
-	// Run the command
+	// Run the command with timeout handling
 	startTime := time.Now()
-	err = cmd.Run()
-	duration := time.Since(startTime)
+	
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return 1, err
+	}
+
+	// Wait for command completion in a goroutine
+	type result struct {
+		err error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		err := cmd.Wait()
+		resultCh <- result{err: err}
+	}()
+
+	// Wait for completion or timeout
+	select {
+	case <-ctx.Done():
+		// Context cancelled (timeout or manual cancel)
+		r.log.Debug("%s Context cancelled, killing process group", prefix)
+		killProcessGroup(cmd)
+		// Wait for the process to actually exit
+		<-resultCh
+		duration := time.Since(startTime)
+		r.log.Warn("%s Agent timed out after %s", prefix, duration.Round(time.Second))
+		return 124, ctx.Err() // Standard timeout exit code
+
+	case res := <-resultCh:
+		// Command completed
+		duration := time.Since(startTime)
+		err = res.err
+	}
 
 	// Get exit code
 	exitCode := 0
@@ -194,14 +226,33 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 }
 
 // buildCommand parses the agent string and creates an exec.Cmd
-// It handles quoted arguments and avoids shell injection
+// It handles quoted arguments and avoids shell injection.
+// The command is configured with a process group to ensure all child
+// processes are terminated on timeout.
 func (r *Runner) buildCommand(ctx context.Context, agent string) *exec.Cmd {
 	args := parseCommandLine(agent)
 	if len(args) == 0 {
 		// Fallback to empty command (will fail gracefully)
 		return exec.CommandContext(ctx, "")
 	}
-	return exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	
+	// Set process group ID so we can kill the entire process tree on timeout.
+	// This ensures child processes spawned by the agent are also terminated.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	
+	return cmd
+}
+
+// killProcessGroup kills the command's process and all its children by
+// sending a signal to the process group. This is more reliable than just
+// killing the parent process when dealing with agents that spawn children.
+func killProcessGroup(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
+		return nil
+	}
+	// Kill the entire process group (negative PID means process group)
+	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }
 
 // parseCommandLine splits a command line string into arguments

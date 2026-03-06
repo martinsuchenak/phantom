@@ -37,6 +37,10 @@ func NewStartCommand() *cli.Command {
 				Aliases: []string{"p"},
 				Usage:   "Keep overlay data across reboots",
 			},
+			&cli.BoolFlag{
+				Name:    "no-stash",
+				Usage:   "Fail if there are uncommitted changes instead of auto-stashing",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
@@ -57,11 +61,12 @@ func doStart(ctx context.Context, cmd *cli.Command) error {
 	name := cmd.GetString("name")
 	branch := cmd.GetString("branch")
 	persistent := cmd.GetBool("persistent")
+	noStash := cmd.GetBool("no-stash")
 
-	return processStart(ctx, baseDir, name, branch, persistent)
+	return processStart(ctx, baseDir, name, branch, persistent, noStash)
 }
 
-func processStart(ctx context.Context, baseDir, name, branch string, persistent bool) error {
+func processStart(ctx context.Context, baseDir, name, branch string, persistent bool, noStash bool) error {
 	// Get absolute path for base directory
 	absBaseDir, err := filepath.Abs(baseDir)
 	if err != nil {
@@ -153,6 +158,11 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 		}
 
 		if hasChanges {
+			if noStash {
+				// User explicitly requested no auto-stash, fail with helpful message
+				return fmt.Errorf("uncommitted changes detected in %s: please commit or stash manually, or remove --no-stash flag to allow auto-stashing", absBaseDir)
+			}
+
 			// Warn user about auto-stashing
 			log.Warn("Uncommitted changes detected, auto-stashing (stash name: overlay-auto-stash-%s)", name)
 

@@ -15,7 +15,23 @@ import (
 	"github.com/martinsuchenak/phantom/pkg/api"
 )
 
-// execCommand is a variable that points to exec.Command, but can be mocked for testing
+// execCommand is a variable that points to exec.Command.
+// It can be replaced in tests to mock command execution without actually
+// running external processes (unionfs-fuse, umount).
+//
+// Pattern: Function variable injection for testing
+// This pattern is used instead of interface-based mocking because:
+//   - exec.Command is a simple function call, not a complex interface
+//   - Tests can easily override: execCommand = func(name string, args ...string) *exec.Cmd { ... }
+//   - See exec_helper_test.go for mock implementation examples
+//   - Alternative (interface-based) would add unnecessary complexity for this use case
+//
+// Example test usage:
+//
+//	execCommand = func(name string, args ...string) *exec.Cmd {
+//	    return exec.Command("echo", "mocked")
+//	}
+//	defer func() { execCommand = exec.Command }()
 var execCommand = exec.Command
 
 // DarwinManager implements overlay filesystem management using unionfs-fuse
