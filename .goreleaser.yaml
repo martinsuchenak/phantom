@@ -57,17 +57,22 @@ release:
   prerelease: auto
   name_template: "v{{.Version}}"
 
-brews:
+homebrew_casks:
   - name: phantom
     repository:
       owner: martinsuchenak
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/martinsuchenak/phantom"
     description: "CLI tool for managing overlay filesystems for parallel AI agent development"
     license: "MIT"
-    install: |
-      bin.install "phantom"
-    test: |
-      system "#{bin}/phantom", "--version"
+    binaries:
+      - phantom
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/phantom"]
+          end
+    

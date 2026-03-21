@@ -146,4 +146,4 @@ make build-all      # Cross-compile all platforms
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) file for details.
