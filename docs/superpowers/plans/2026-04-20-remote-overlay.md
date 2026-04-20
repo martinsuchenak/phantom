@@ -930,6 +930,19 @@ func TestAuthSecretWrong(t *testing.T) {
         t.Errorf("expected Unauthenticated, got %v", err)
     }
 }
+
+func TestAuthMTLSSkipsMetadataCheck(t *testing.T) {
+    // mTLS enforcement happens at transport layer (grpc.Creds), not in the interceptor.
+    // The interceptor must pass through without error when mode=mtls.
+    client, cleanup := setupServerWithAuth(t, rpc.AuthOptions{Mode: rpc.AuthMTLS})
+    defer cleanup()
+
+    // No metadata — interceptor should not reject (transport layer is insecure in test, that's fine)
+    _, err := client.ListRepos(context.Background(), &proto.ListReposRequest{})
+    if err != nil {
+        t.Errorf("expected interceptor to pass through for mtls mode, got %v", err)
+    }
+}
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -3191,6 +3204,29 @@ func TestPushCommandExists(t *testing.T) {
         t.Errorf("expected name 'push', got %q", cmd.Name)
     }
 }
+
+func TestPushRejectsLocalOverlay(t *testing.T) {
+    // push must error if the overlay is not remote
+    ovl := &api.Overlay{Name: "local-agent", Remote: false}
+    err := validatePushOverlay(ovl)
+    if err == nil {
+        t.Error("expected error for non-remote overlay")
+    }
+}
+
+func TestPushAcceptsRemoteOverlay(t *testing.T) {
+    ovl := &api.Overlay{
+        Name:       "remote-agent",
+        Remote:     true,
+        RemoteNode: "node-a",
+        RemoteRepo: "myapp",
+        WorkDir:    t.TempDir(),
+    }
+    err := validatePushOverlay(ovl)
+    if err != nil {
+        t.Errorf("expected no error for remote overlay, got %v", err)
+    }
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -3200,7 +3236,21 @@ go test ./internal/commands/... -run "TestPushCommand" -v
 # Expected: FAIL — NewPushCommand undefined
 ```
 
-- [ ] **Step 3: Create `internal/commands/push.go`**
+- [ ] **Step 3: Add `validatePushOverlay` to `internal/commands/push.go`** (needed by tests above)
+
+Extract the validation so it's testable:
+
+```go
+// validatePushOverlay returns an error if the overlay cannot be pushed.
+func validatePushOverlay(ovl *api.Overlay) error {
+    if !ovl.Remote {
+        return fmt.Errorf("overlay %q is not a remote overlay; push only applies to overlays created with --repo", ovl.Name)
+    }
+    return nil
+}
+```
+
+- [ ] **Step 5: Create the rest of `internal/commands/push.go`**
 
 ```go
 package commands
@@ -3213,6 +3263,7 @@ import (
     "github.com/martinsuchenak/phantom/internal/rpc"
     phantomsync "github.com/martinsuchenak/phantom/internal/sync"
     "github.com/martinsuchenak/phantom/internal/state"
+    "github.com/martinsuchenak/phantom/pkg/api"
 )
 
 func NewPushCommand() *cli.Command {
@@ -3296,7 +3347,7 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
 }
 ```
 
-- [ ] **Step 4: Verify `NewPushCommand` is registered in `root.go`**
+- [ ] **Step 6: Verify `NewPushCommand` is registered in `root.go`**
 
 Ensure `NewPushCommand()` is in the `Commands` slice (added in Task 9 Step 5). Rebuild:
 
@@ -3306,14 +3357,14 @@ go build ./...
 # Expected: shows usage for phantom push
 ```
 
-- [ ] **Step 5: Run all tests**
+- [ ] **Step 7: Run all tests**
 
 ```bash
 go test ./... -v
 # Expected: all PASS
 ```
 
-- [ ] **Step 6: Wire sentinel into phantom start for remote overlays**
+- [ ] **Step 8: Wire sentinel into phantom start for remote overlays**
 
 In `processStartRemote` in `internal/commands/start.go`, after creating the overlay, start the sentinel watcher:
 
@@ -3338,7 +3389,7 @@ go func() {
 
 Note: `rfs_inner_client` requires storing the `proto.FileServiceClient` from `NewRemoteFSFromDial` — refactor `processStartRemote` to keep a reference to `fc.Inner()` before passing to `NewRemoteFS`.
 
-- [ ] **Step 7: Final build and test**
+- [ ] **Step 9: Final build and test**
 
 ```bash
 go test ./...
@@ -3346,7 +3397,7 @@ go build ./...
 # Expected: all pass, clean build
 ```
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add internal/commands/push.go internal/commands/push_test.go \
@@ -3356,10 +3407,168 @@ git commit -m "feat(commands): add phantom push command and wire sentinel watche
 
 ---
 
+## Task 16: Documentation Updates
+
+**Files:** `docs/commands.md`, `docs/configuration.md`, `docs/workflows.md`
+
+- [ ] **Step 1: Update `docs/commands.md` — new commands**
+
+Find the existing `## phantom sync` section. Insert three new command sections immediately before it. Write them as plain markdown — no outer wrapper needed, just add the text:
+
+Section 1 — phantom node:
+
+> **## phantom node**
+>
+> Manage the phantom node daemon. The daemon joins the gossip ring, advertises local repos, and serves files over gRPC so other nodes can use them as overlay base layers.
+>
+> **### phantom node start** — Starts the daemon in the foreground. Writes PID to `~/.phantom/node.pid`. Reads settings from the `node:` config section.
+>
+> **### phantom node stop** — Sends SIGTERM to the running daemon via `~/.phantom/node.pid`.
+>
+> **### phantom node list** — Lists peers visible in the gossip ring.
+
+Section 2 — phantom push:
+
+> **## phantom push**
+>
+> Pushes changes from an overlay's upper dir back to the remote node that holds the base repo. Only works for overlays created with `--repo`. If the remote repo is a git repo and `node.sync.auto_git_commit: true`, the remote node also runs `git commit`.
+>
+> Flags: `--message` / `-m` — commit message used on the remote.
+
+Section 3 — phantom repos:
+
+> **## phantom repos**
+>
+> Lists all repos advertised by peers in the gossip ring. Requires a running node daemon.
+
+- [ ] **Step 2: Update `docs/commands.md` — new flags on `phantom start`**
+
+Find the `phantom start` flags table. Append two rows:
+
+| Flag     | Short | Description                                                            |
+|----------|-------|------------------------------------------------------------------------|
+| `--repo` |       | Remote repo name to use as base (auto-discovers node from gossip ring) |
+| `--node` |       | Explicit node ID when multiple nodes serve the same repo               |
+
+After the existing description, add a **Remote overlay** paragraph explaining: when `--repo` is given, phantom connects to the advertising node, mounts its repo via FUSE/gRPC, and creates the overlay on top — the AI agent sees a plain local filesystem. Use `phantom push` to sync changes back.
+
+Then add this example:
+
+```bash
+# Local overlay (existing behaviour)
+phantom start /path/to/repo --name agent1
+
+# Remote overlay (new)
+phantom start --repo myapp --node node-a --name agent1
+```
+
+- [ ] **Step 3: Update `docs/configuration.md` — node section**
+
+After the existing `## agent` section, add a `## node` section with this description: "Controls the phantom node daemon — gossip ring membership, gRPC file server, and sync behaviour."
+
+Then add the full YAML example:
+
+```yaml
+node:
+  id: ""                  # Stable node identity. Defaults to hostname if empty.
+  gossip_port: 7946       # UDP port for gossip ring membership.
+  grpc_port: 50051        # TCP port for gRPC file server.
+  seeds:                  # Bootstrap peers to join the ring. At least one required.
+    - "192.168.1.10:7946"
+  repos:                  # Repos this node serves to other nodes.
+    - name: "myapp"       # Logical name peers use to reference this repo.
+      path: "/home/user/myapp"
+  auth:
+    mode: none            # Auth mode: none | secret | mtls
+    secret: ""            # Shared secret (mode=secret). Also: PHANTOM_NODE_SECRET env var.
+    cert_file: ""         # TLS certificate file path (mode=mtls).
+    key_file: ""          # TLS private key file path (mode=mtls).
+    ca_file: ""           # CA certificate file path (mode=mtls).
+  sync:
+    auto_git_commit: true # Commit on remote after push if repo is git.
+```
+
+Then add a `### Auth modes` subsection describing the three modes:
+
+- **none** — No authentication. Any node on the network can connect. Suitable for trusted LANs.
+- **secret** — Pre-shared token sent with every request. Set via `auth.secret` or the `PHANTOM_NODE_SECRET` env var.
+- **mtls** — Mutual TLS. Both nodes present certificates signed by the same CA.
+
+Close with: "If auth modes mismatch, the server returns UNAUTHENTICATED and phantom surfaces a readable error."
+
+- [ ] **Step 4: Update `docs/workflows.md` — remote overlay workflow**
+
+Append a `## Remote Overlay (Multi-Machine Parallel Agents)` section at the end of the file with this content:
+
+Opening paragraph: "Run AI agents on different machines against the same source repo without cloning it."
+
+Node A config + start:
+
+```yaml
+# ~/.phantom/config.yaml on Node A
+node:
+  id: "node-a"
+  seeds: []
+  repos:
+    - name: "myapp"
+      path: "/home/user/myapp"
+```
+
+```bash
+phantom node start   # run on Node A
+```
+
+Node B config + overlay creation:
+
+```yaml
+# ~/.phantom/config.yaml on Node B
+node:
+  id: "node-b"
+  seeds: ["192.168.1.10:7946"]
+```
+
+```bash
+phantom node start &
+phantom start --repo myapp --name agent1
+```
+
+Sync examples:
+
+```bash
+# Explicit push
+phantom push agent1 --message "implement feature X"
+
+# Sentinel: agent writes the file, phantom detects and syncs automatically
+echo "implement feature X" > ~/.phantom/mnt/agent1/.phantom_commit
+# Outcome written to .phantom_commit_result
+```
+
+Closing paragraph: "Each node runs `phantom node start` and creates its own overlay with `phantom start --repo myapp`. All overlays share the same read-only base on Node A. Writes are isolated per overlay — push each agent's changes to Node A independently."
+
+- [ ] **Step 5: Verify all docs render correctly**
+
+```bash
+# Check for broken markdown (if markdownlint is available)
+markdownlint docs/commands.md docs/configuration.md docs/workflows.md
+
+# Or just eyeball the structure
+wc -l docs/commands.md docs/configuration.md docs/workflows.md
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add docs/commands.md docs/configuration.md docs/workflows.md
+git commit -m "docs: document remote overlay commands, config, and workflow"
+```
+
+---
+
 ## Self-Review Checklist
 
-- [x] **Spec coverage:** Gossip ring (Task 8), gRPC data plane (Tasks 4-7), FUSE mount client (Task 10), sync + sentinel (Tasks 12-14), auth tiers (Task 6), config (Task 2), types (Task 3), CLI commands (Tasks 9, 11, 15) — all spec sections covered.
+- [x] **Spec coverage:** Gossip ring (Task 8), gRPC data plane (Tasks 4-7), FUSE mount client (Task 10), sync + sentinel (Tasks 12-14), auth tiers (Task 6), config (Task 2), types (Task 3), CLI commands (Tasks 9, 11, 15), docs (Task 16) — all spec sections covered.
 - [x] **No placeholders:** All code blocks are complete. `phantom node list` and `phantom repos` have IPC-pending notes which are accurate limitations of this phase.
-- [x] **Type consistency:** `Change`, `SyncResult`, `Syncer`, `RemoteFS`, `AttrInfo`, `Registry`, `Peer`, `AuthOptions`, `DialOpts`, `FileClient`, `FileServer` — names consistent across all tasks.
+- [x] **Type consistency:** `Change`, `SyncResult`, `Syncer`, `RemoteFS`, `AttrInfo`, `Registry`, `Peer`, `AuthOptions`, `DialOpts`, `FileClient`, `FileServer`, `validatePushOverlay` — names consistent across all tasks.
 - [x] **`phantom sync` name conflict:** Existing `phantom sync` pulls base changes into overlay. New remote push uses `phantom push` — no conflict.
 - [x] **`phantom start` (not `phantom create`):** Plan uses existing `start` command extended with `--repo`/`--node`.
+- [x] **Tests coverage:** Unit tests for all packages; mTLS interceptor test added (Task 6); `validatePushOverlay` extraction enables unit testing of push validation (Task 15); walker, syncer, sentinel, registry, server, client, auth, FUSE node all covered.
