@@ -8,8 +8,8 @@ func resolveBaseDir(input string) string {
 		return input
 	}
 
-	if projectPath, ok := cfg.Projects[input]; ok {
-		return projectPath
+	if proj, ok := cfg.Projects[input]; ok {
+		return proj.Path
 	}
 
 	return input

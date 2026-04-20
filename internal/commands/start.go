@@ -3,11 +3,16 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/martinsuchenak/phantom/internal/git"
+	phantommdns "github.com/martinsuchenak/phantom/internal/mdns"
+	"github.com/martinsuchenak/phantom/internal/remotefs"
+	"github.com/martinsuchenak/phantom/internal/rpc"
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
@@ -37,12 +42,19 @@ func NewStartCommand() *cli.Command {
 				Aliases: []string{"p"},
 				Usage:   "Keep overlay data across reboots",
 			},
+			&cli.StringFlag{
+				Name:  "repo",
+				Usage: "Remote repo name to use as base (requires --node)",
+			},
+			&cli.StringFlag{
+				Name:  "node",
+				Usage: "Remote node address (host[:port]); if omitted, auto-discovered via mDNS",
+			},
 		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
-				Name:     "base-dir",
-				Usage:    "Base directory to overlay",
-				Required: true,
+				Name:  "base-dir",
+				Usage: "Base directory to overlay",
 			},
 		},
 		Run: doStart,
@@ -51,14 +63,119 @@ func NewStartCommand() *cli.Command {
 
 func doStart(ctx context.Context, cmd *cli.Command) error {
 	baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
-	if baseDir == "" {
-		return fmt.Errorf("base directory is required")
+	repo := cmd.GetString("repo")
+	nodeAddr := cmd.GetString("node")
+
+	if err := validateStartArgs(baseDir, repo, nodeAddr); err != nil {
+		return err
 	}
+
 	name := cmd.GetString("name")
 	branch := cmd.GetString("branch")
 	persistent := cmd.GetBool("persistent")
 
+	if repo != "" {
+		return processStartRemote(ctx, repo, nodeAddr, name, branch, persistent)
+	}
+
 	return processStart(ctx, baseDir, name, branch, persistent)
+}
+
+func validateStartArgs(baseDir, repo, nodeAddr string) error {
+	if baseDir != "" && repo != "" {
+		return fmt.Errorf("specify either a base directory or --repo, not both")
+	}
+	if baseDir == "" && repo == "" {
+		return fmt.Errorf("base directory or --repo is required")
+	}
+	return nil
+}
+
+func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string, persistent bool) error {
+	if nodeAddr == "" {
+		log.Info("--node not specified, probing LAN via mDNS for a node serving %q...", repo)
+		discovered, err := phantommdns.DiscoverRepo(ctx, repo, 0)
+		if err != nil {
+			return fmt.Errorf("--node not provided and mDNS discovery failed: %w", err)
+		}
+		log.Info("Found node at %s via mDNS", discovered)
+		nodeAddr = discovered
+	}
+
+	grpcAddr := nodeAddr
+	if !strings.Contains(nodeAddr, ":") {
+		grpcAddr = fmt.Sprintf("%s:%d", nodeAddr, cfg.Node.GRPCPort)
+	}
+
+	authOpts := rpc.DialOpts{
+		Auth: rpc.AuthOptions{
+			Mode:   rpc.AuthMode(cfg.Node.Auth.Mode),
+			Secret: cfg.Node.Auth.Secret,
+		},
+	}
+
+	mountBase := cfg.GetRemoteMountsPath()
+	safeNodeName := strings.ReplaceAll(grpcAddr, ":", "_")
+	remoteMountPath := filepath.Join(mountBase, safeNodeName, repo)
+	if err := os.MkdirAll(remoteMountPath, 0755); err != nil {
+		return fmt.Errorf("create remote mount dir: %w", err)
+	}
+
+	rfs, err := remotefs.NewRemoteFSFromDial(ctx, grpcAddr, authOpts, repo)
+	if err != nil {
+		return fmt.Errorf("connect to node %s: %w", grpcAddr, err)
+	}
+
+	if name == "" {
+		name = repo
+	}
+
+	fuseCtx, fuseCancel := context.WithCancel(ctx)
+	defer fuseCancel()
+	readyCh := make(chan struct{})
+	fuseErrCh := make(chan error, 1)
+	go func() {
+		fuseErrCh <- remotefs.Mount(fuseCtx, rfs, remotefs.MountOpts{MountPoint: remoteMountPath, ReadyCh: readyCh})
+	}()
+
+	select {
+	case <-readyCh:
+		// FUSE server is ready.
+	case err := <-fuseErrCh:
+		return fmt.Errorf("FUSE mount failed: %w", err)
+	case <-time.After(10 * time.Second):
+		fuseCancel()
+		select {
+		case <-fuseErrCh:
+		case <-time.After(5 * time.Second):
+		}
+		return fmt.Errorf("timed out waiting for FUSE mount at %s", remoteMountPath)
+	}
+
+	overlayErr := processStart(ctx, remoteMountPath, name, branch, persistent)
+
+	if overlayErr == nil {
+		store, err := state.NewStore(cfg.GetStatePath())
+		if err == nil {
+			if ovl, loadErr := store.Load(name); loadErr == nil {
+				ovl.Remote = true
+				ovl.RemoteNode = grpcAddr
+				ovl.RemoteRepo = repo
+				ovl.RemoteMountPath = remoteMountPath
+				_ = store.Save(ovl)
+			}
+		}
+	}
+
+	if overlayErr != nil {
+		fuseCancel()
+		select {
+		case <-fuseErrCh:
+		case <-time.After(5 * time.Second):
+		}
+	}
+
+	return overlayErr
 }
 
 func processStart(ctx context.Context, baseDir, name, branch string, persistent bool) error {

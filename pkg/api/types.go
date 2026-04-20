@@ -19,6 +19,10 @@ type Overlay struct {
 	CreatedAt    time.Time `json:"created_at" yaml:"created_at"`
 	PID          int       `json:"pid,omitempty" yaml:"pid,omitempty"`           // macOS unionfs / Linux fuse-overlayfs process
 	UseFuse      bool      `json:"use_fuse,omitempty" yaml:"use_fuse,omitempty"` // Linux: whether fuse-overlayfs was used
+	Remote       bool      `json:"remote,omitempty" yaml:"remote,omitempty"`
+	RemoteNode   string    `json:"remote_node,omitempty" yaml:"remote_node,omitempty"`
+	RemoteRepo   string    `json:"remote_repo,omitempty" yaml:"remote_repo,omitempty"`
+	RemoteMountPath string `json:"remote_mount_path,omitempty" yaml:"remote_mount_path,omitempty"`
 }
 
 // OverlayStatus represents the current status of an overlay
@@ -66,6 +70,10 @@ const (
 	ErrInvalidConfig     = "INVALID_CONFIG"
 	ErrOverlayNotMounted = "OVERLAY_NOT_MOUNTED"
 	ErrOverlayLocked     = "OVERLAY_LOCKED"
+	ErrRemoteUnavailable = "ERR_REMOTE_UNAVAILABLE"
+	ErrAuthFailed        = "ERR_AUTH_FAILED"
+	ErrSyncFailed        = "ERR_SYNC_FAILED"
+	ErrFileTooLarge      = "ERR_FILE_TOO_LARGE"
 )
 
 // OverlayError represents a structured error with code
@@ -93,4 +101,10 @@ func NewError(code, message string, cause error) *OverlayError {
 		Message: message,
 		Cause:   cause,
 	}
+}
+
+type Peer struct {
+	ID       string   `json:"id"`
+	GRPCAddr string   `json:"grpc_addr"`
+	Repos    []string `json:"repos"`
 }

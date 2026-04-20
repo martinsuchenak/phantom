@@ -210,6 +210,10 @@ func TestErrorCodes(t *testing.T) {
 		ErrPermissionDenied,
 		ErrInvalidConfig,
 		ErrOverlayNotMounted,
+		ErrRemoteUnavailable,
+		ErrAuthFailed,
+		ErrSyncFailed,
+		ErrFileTooLarge,
 	}
 
 	for _, code := range codes {
@@ -218,5 +222,35 @@ func TestErrorCodes(t *testing.T) {
 				t.Error("error code should not be empty")
 			}
 		})
+	}
+}
+
+func TestOverlayRemoteFields(t *testing.T) {
+	o := Overlay{
+		Name:            "agent1",
+		Remote:          true,
+		RemoteNode:      "node-a",
+		RemoteRepo:      "myapp",
+		RemoteMountPath: "/home/user/.phantom/remote-mounts/node-a/myapp",
+	}
+	if !o.Remote {
+		t.Error("expected Remote to be true")
+	}
+	if o.RemoteNode != "node-a" {
+		t.Errorf("expected RemoteNode 'node-a', got %q", o.RemoteNode)
+	}
+	if o.RemoteRepo != "myapp" {
+		t.Errorf("expected RemoteRepo 'myapp', got %q", o.RemoteRepo)
+	}
+}
+
+func TestPeer(t *testing.T) {
+	p := Peer{
+		ID:       "node-a",
+		GRPCAddr: "192.168.1.10:50051",
+		Repos:    []string{"myapp", "other"},
+	}
+	if len(p.Repos) != 2 {
+		t.Errorf("expected 2 repos, got %d", len(p.Repos))
 	}
 }

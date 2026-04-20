@@ -12,10 +12,9 @@ import (
 )
 
 func TestProjectResolver(t *testing.T) {
-	// Setup global config mock
 	testCfg := config.DefaultConfig()
-	testCfg.Projects = map[string]string{
-		"testproj": "/path/to/testproj",
+	testCfg.Projects = map[string]config.Project{
+		"testproj": {Path: "/path/to/testproj"},
 	}
 	cfg = testCfg
 	defer func() { cfg = nil }()
@@ -58,54 +57,105 @@ func execCmd(args ...string) error {
 }
 
 func TestProjectCommands(t *testing.T) {
-	// Setup test environment
 	tmpDir := t.TempDir()
 	cfgPath = filepath.Join(tmpDir, "config.yaml")
 
-	// Set global config
 	cfg = config.DefaultConfig()
-	cfg.Projects = make(map[string]string)
+	cfg.Projects = make(map[string]config.Project)
 
-	// Suppress logs
 	oldLog := log
 	log = NewCLILogger(false)
 	defer func() { log = oldLog }()
 
 	t.Run("Add Project", func(t *testing.T) {
 		projPath := filepath.Join(tmpDir, "my-app")
-		err := os.MkdirAll(projPath, 0755)
-		if err != nil {
+		if err := os.MkdirAll(projPath, 0755); err != nil {
 			t.Fatalf("failed to create dir: %v", err)
 		}
 
-		err = execCmd("add", "myapp", projPath)
-		if err != nil {
+		if err := execCmd("add", "myapp", projPath); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		if cfg.Projects["myapp"] != projPath {
-			t.Errorf("expected project %q to have path %q, got %q", "myapp", projPath, cfg.Projects["myapp"])
+		proj, ok := cfg.Projects["myapp"]
+		if !ok {
+			t.Fatal("expected project myapp to exist")
+		}
+		if proj.Path != projPath {
+			t.Errorf("expected path %q, got %q", projPath, proj.Path)
+		}
+		if proj.Serve {
+			t.Error("expected serve to be false by default")
+		}
+	})
+
+	t.Run("Add Project with --serve", func(t *testing.T) {
+		projPath := filepath.Join(tmpDir, "served-app")
+		if err := os.MkdirAll(projPath, 0755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+
+		if err := execCmd("add", "--serve", "servedapp", projPath); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		proj, ok := cfg.Projects["servedapp"]
+		if !ok {
+			t.Fatal("expected project servedapp to exist")
+		}
+		if !proj.Serve {
+			t.Error("expected serve to be true")
+		}
+	})
+
+	t.Run("Serve existing project", func(t *testing.T) {
+		cfg.Projects["myapp"] = config.Project{Path: cfg.Projects["myapp"].Path, Serve: false}
+
+		if err := execCmd("serve", "myapp"); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if !cfg.Projects["myapp"].Serve {
+			t.Error("expected serve to be true after serve command")
+		}
+	})
+
+	t.Run("Unserve project", func(t *testing.T) {
+		if err := execCmd("unserve", "myapp"); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if cfg.Projects["myapp"].Serve {
+			t.Error("expected serve to be false after unserve command")
+		}
+	})
+
+	t.Run("Serve non-existent project", func(t *testing.T) {
+		err := execCmd("serve", "doesntexist")
+		if err == nil {
+			t.Fatal("expected error for non-existent project")
+		}
+		if !strings.Contains(err.Error(), "not found") {
+			t.Errorf("expected 'not found' error, got %q", err.Error())
 		}
 	})
 
 	t.Run("Remove Project", func(t *testing.T) {
-		// Add test project directly
-		cfg.Projects["toremove"] = "/tmp/fake"
+		cfg.Projects["toremove"] = config.Project{Path: "/tmp/fake"}
 
-		err := execCmd("remove", "toremove")
-		if err != nil {
+		if err := execCmd("remove", "toremove"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
 		if _, exists := cfg.Projects["toremove"]; exists {
-			t.Errorf("expected project to be removed")
+			t.Error("expected project to be removed")
 		}
 	})
 
 	t.Run("Remove Non-existent Project", func(t *testing.T) {
 		err := execCmd("remove", "doesntexist")
 		if err == nil {
-			t.Fatalf("expected error, got nil")
+			t.Fatal("expected error, got nil")
 		}
 		if !strings.Contains(err.Error(), "not found") {
 			t.Errorf("expected error to contain 'not found', got %q", err.Error())
@@ -113,11 +163,10 @@ func TestProjectCommands(t *testing.T) {
 	})
 
 	t.Run("List Projects", func(t *testing.T) {
-		cfg.Projects["proj1"] = "/tmp/1"
-		cfg.Projects["proj2"] = "/tmp/2"
+		cfg.Projects["proj1"] = config.Project{Path: "/tmp/1"}
+		cfg.Projects["proj2"] = config.Project{Path: "/tmp/2", Serve: true}
 
-		err := execCmd("list")
-		if err != nil {
+		if err := execCmd("list"); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})

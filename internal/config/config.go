@@ -8,6 +8,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Project represents a registered local project. The YAML format accepts both
+// the legacy plain-string form and the current object form:
+//
+//	# legacy (auto-migrated on first load)
+//	projects:
+//	  myapp: /path/to/myapp
+//
+//	# current
+//	projects:
+//	  myapp:
+//	    path: /path/to/myapp
+//	    serve: true   # expose via gRPC for remote overlays
+type Project struct {
+	Path  string `yaml:"path"`
+	Serve bool   `yaml:"serve,omitempty"`
+}
+
+// UnmarshalYAML makes Project accept both a bare string (legacy) and a mapping.
+func (p *Project) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		p.Path = value.Value
+		return nil
+	}
+	type plain Project
+	return value.Decode((*plain)(p))
+}
+
 // Config represents the application configuration
 type Config struct {
 	StateDir string   `yaml:"state_dir"`
@@ -17,9 +44,10 @@ type Config struct {
 	Git      Git      `yaml:"git"`
 	Darwin   Darwin   `yaml:"darwin"`
 	Linux    Linux    `yaml:"linux"`
-	Agent    Agent             `yaml:"agent"`
-	AgentEnv []string          `yaml:"agent_env"`
-	Projects map[string]string `yaml:"projects"`
+	Agent    Agent              `yaml:"agent"`
+	AgentEnv []string           `yaml:"agent_env"`
+	Projects map[string]Project `yaml:"projects"`
+	Node     NodeConfig         `yaml:"node"`
 }
 
 // Paths allows overriding individual directory locations
@@ -67,6 +95,36 @@ type Agent struct {
 	DefaultTimeoutMinutes int  `yaml:"default_timeout_minutes"`
 	CleanupOnSuccess      bool `yaml:"cleanup_on_success"`
 	CleanupOnFailure      bool `yaml:"cleanup_on_failure"`
+}
+
+type NodeAuth struct {
+	Mode     string `yaml:"mode"`
+	Secret   string `yaml:"secret"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
+	CAFile   string `yaml:"ca_file"`
+}
+
+type NodeRepo struct {
+	Name string `yaml:"name"`
+	Path string `yaml:"path"`
+}
+
+type NodeSync struct {
+	AutoGitCommit    bool  `yaml:"auto_git_commit"`
+	MaxFileSizeBytes int64 `yaml:"max_file_size_bytes"`
+}
+
+type NodeConfig struct {
+	ID         string     `yaml:"id"`
+	GossipPort int        `yaml:"gossip_port"`
+	GRPCPort   int        `yaml:"grpc_port"`
+	Seeds      []string   `yaml:"seeds"`
+	// Repos is the legacy field. On load it is migrated to Projects with
+	// Serve: true and then cleared. Use cfg.Projects instead.
+	Repos      []NodeRepo `yaml:"repos,omitempty"`
+	Auth       NodeAuth   `yaml:"auth"`
+	Sync       NodeSync   `yaml:"sync"`
 }
 
 // MaxTimeoutMinutes is the maximum allowed timeout value
@@ -119,7 +177,20 @@ func DefaultConfig() *Config {
 		AgentEnv: []string{
 			"OVERLAY_ENABLED=true",
 		},
-		Projects: make(map[string]string),
+		Projects: make(map[string]Project),
+		Node: NodeConfig{
+			GossipPort: 7946,
+			GRPCPort:   50051,
+			Seeds:      []string{},
+			Repos:      []NodeRepo{},
+			Auth: NodeAuth{
+				Mode: "none",
+			},
+			Sync: NodeSync{
+				AutoGitCommit:    true,
+				MaxFileSizeBytes: 50 * 1024 * 1024,
+			},
+		},
 	}
 }
 
@@ -159,7 +230,20 @@ func Load(path string) (*Config, error) {
 
 	// Ensure Projects map is initialized if missing from yaml
 	if cfg.Projects == nil {
-		cfg.Projects = make(map[string]string)
+		cfg.Projects = make(map[string]Project)
+	}
+
+	// Migrate legacy node.repos entries into Projects with Serve: true.
+	if len(cfg.Node.Repos) > 0 {
+		for _, r := range cfg.Node.Repos {
+			if existing, ok := cfg.Projects[r.Name]; ok {
+				existing.Serve = true
+				cfg.Projects[r.Name] = existing
+			} else {
+				cfg.Projects[r.Name] = Project{Path: r.Path, Serve: true}
+			}
+		}
+		cfg.Node.Repos = nil
 	}
 
 	// Validate configuration
@@ -218,6 +302,41 @@ func (c *Config) Save(path string) error {
 	return os.WriteFile(path, data, 0600)
 }
 
+// EnsureNodeDefaults fills in any missing NodeConfig fields with sensible
+// defaults. It returns a human-readable description of each field that was
+// set so the caller can log or display them. It does not save the config.
+func (c *Config) EnsureNodeDefaults() []string {
+	nc := &c.Node
+	var changed []string
+
+	if nc.ID == "" {
+		hostname, _ := os.Hostname()
+		if hostname == "" {
+			hostname = "phantom-node"
+		}
+		nc.ID = hostname
+		changed = append(changed, fmt.Sprintf("node.id = %q (from hostname)", nc.ID))
+	}
+	if nc.GRPCPort == 0 {
+		nc.GRPCPort = 50051
+		changed = append(changed, "node.grpc_port = 50051")
+	}
+	if nc.GossipPort == 0 {
+		nc.GossipPort = 7946
+		changed = append(changed, "node.gossip_port = 7946")
+	}
+	if nc.Auth.Mode == "" {
+		nc.Auth.Mode = "none"
+		changed = append(changed, "node.auth.mode = \"none\"")
+	}
+	if nc.Sync.MaxFileSizeBytes == 0 {
+		nc.Sync.MaxFileSizeBytes = 50 * 1024 * 1024
+		changed = append(changed, "node.sync.max_file_size_bytes = 52428800 (50 MiB)")
+	}
+
+	return changed
+}
+
 // GetStatePath returns the full path to the state directory
 func (c *Config) GetStatePath() string {
 	return c.StateDir
@@ -253,6 +372,18 @@ func (c *Config) GetSnapshotsPath() string {
 		return c.Paths.Snapshots
 	}
 	return filepath.Join(c.StateDir, "snapshots")
+}
+
+func (c *Config) GetRemoteMountsPath() string {
+	return filepath.Join(c.StateDir, "remote-mounts")
+}
+
+func (c *Config) GetNodePIDPath() string {
+	return filepath.Join(c.StateDir, "node.pid")
+}
+
+func (c *Config) GetPeersStatePath() string {
+	return filepath.Join(c.StateDir, "peers.json")
 }
 
 func expandHome(path string) string {

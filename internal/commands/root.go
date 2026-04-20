@@ -53,6 +53,7 @@ func Execute() {
 				EnvVars:      []string{"OVERLAY_CONFIG"},
 				AssignTo:     &cfgPath,
 				DefaultValue: "",
+				Global:       true,
 			},
 			&cli.BoolFlag{
 				Name:     "verbose",
@@ -101,6 +102,9 @@ func Execute() {
 			NewConfigCommand(),
 			NewManageCommand(),
 			NewProjectCommand(),
+			NewNodeCommand(),
+			NewReposCommand(),
+			NewPushCommand(),
 			cli.GenerateCompletionCommand(),
 		},
 		PreRun: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {

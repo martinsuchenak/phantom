@@ -8,29 +8,36 @@ import (
 	"sort"
 	"text/tabwriter"
 
+	"github.com/martinsuchenak/phantom/internal/config"
 	"github.com/paularlott/cli"
 )
 
-// NewProjectCommand creates the project command group
 func NewProjectCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "project",
 		Usage:       "Manage registered projects",
-		Description: "Register projects to use their names instead of absolute paths as base directories.",
+		Description: "Register projects to use their names as base directories. Mark projects with --serve to expose them via gRPC for remote overlays.",
 		Commands: []*cli.Command{
 			NewProjectAddCommand(),
 			NewProjectRemoveCommand(),
 			NewProjectListCommand(),
+			NewProjectServeCommand(),
+			NewProjectUnserveCommand(),
 		},
 	}
 }
 
-// NewProjectAddCommand creates the project add command
 func NewProjectAddCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "add",
 		Usage:       "Register a new project",
-		Description: "Adds a project name to path mapping so the name can be used as a base directory.",
+		Description: "Adds a project name-to-path mapping. Use --serve to also expose it via gRPC for remote overlays.",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "serve",
+				Usage: "Expose this project via gRPC for remote overlays (phantom node start)",
+			},
+		},
 		Arguments: []cli.Argument{
 			&cli.StringArg{
 				Name:     "name",
@@ -47,7 +54,6 @@ func NewProjectAddCommand() *cli.Command {
 	}
 }
 
-// NewProjectRemoveCommand creates the project remove command
 func NewProjectRemoveCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "remove",
@@ -64,26 +70,57 @@ func NewProjectRemoveCommand() *cli.Command {
 	}
 }
 
-// NewProjectListCommand creates the project list command
 func NewProjectListCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "list",
 		Usage:       "List registered projects",
-		Description: "Lists all currently registered projects and their paths.",
+		Description: "Lists all registered projects, their paths, and whether they are served remotely.",
 		Run:         doProjectList,
+	}
+}
+
+func NewProjectServeCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "serve",
+		Usage:       "Mark a project as served via gRPC",
+		Description: "Marks an existing project so that it is exposed by the phantom node daemon for remote overlays.",
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:     "name",
+				Usage:    "Name of the project to serve",
+				Required: true,
+			},
+		},
+		Run: doProjectServe,
+	}
+}
+
+func NewProjectUnserveCommand() *cli.Command {
+	return &cli.Command{
+		Name:        "unserve",
+		Usage:       "Stop serving a project via gRPC",
+		Description: "Removes the serve flag from a project so it is no longer exposed by the phantom node daemon.",
+		Arguments: []cli.Argument{
+			&cli.StringArg{
+				Name:     "name",
+				Usage:    "Name of the project to stop serving",
+				Required: true,
+			},
+		},
+		Run: doProjectUnserve,
 	}
 }
 
 func doProjectAdd(ctx context.Context, cmd *cli.Command) error {
 	name := cmd.GetStringArg("name")
 	projectPath := cmd.GetStringArg("path")
+	serve := cmd.GetBool("serve")
 
 	absPath, err := filepath.Abs(projectPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path: %w", err)
 	}
 
-	// Verify the directory exists (optional, but helpful)
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,19 +133,23 @@ func doProjectAdd(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if cfg.Projects == nil {
-		cfg.Projects = make(map[string]string)
+		cfg.Projects = make(map[string]config.Project)
 	}
 
-	cfg.Projects[name] = absPath
+	cfg.Projects[name] = config.Project{Path: absPath, Serve: serve}
 	if err := cfg.Save(cfgPath); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	log.Info("Successfully registered project %q -> %s", name, absPath)
+	if serve {
+		log.Info("Registered project %q -> %s (served via gRPC)", name, absPath)
+	} else {
+		log.Info("Registered project %q -> %s", name, absPath)
+	}
 	return nil
 }
 
-func doProjectRemove(ctx context.Context, cmd *cli.Command) error {
+func doProjectRemove(_ context.Context, cmd *cli.Command) error {
 	name := cmd.GetStringArg("name")
 
 	if cfg.Projects == nil {
@@ -124,29 +165,66 @@ func doProjectRemove(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
-	log.Info("Successfully removed project %q", name)
+	log.Info("Removed project %q", name)
 	return nil
 }
 
-func doProjectList(ctx context.Context, cmd *cli.Command) error {
+func doProjectList(_ context.Context, _ *cli.Command) error {
 	if len(cfg.Projects) == 0 {
 		log.Info("No projects registered.")
 		return nil
 	}
 
-	var names []string
+	names := make([]string, 0, len(cfg.Projects))
 	for name := range cfg.Projects {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tPATH")
-
+	fmt.Fprintln(w, "NAME\tPATH\tSERVED")
 	for _, name := range names {
-		fmt.Fprintf(w, "%s\t%s\n", name, cfg.Projects[name])
+		proj := cfg.Projects[name]
+		served := "-"
+		if proj.Serve {
+			served = "yes"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", name, proj.Path, served)
 	}
-	w.Flush()
+	return w.Flush()
+}
 
+func doProjectServe(_ context.Context, cmd *cli.Command) error {
+	name := cmd.GetStringArg("name")
+	return setProjectServe(name, true)
+}
+
+func doProjectUnserve(_ context.Context, cmd *cli.Command) error {
+	name := cmd.GetStringArg("name")
+	return setProjectServe(name, false)
+}
+
+func setProjectServe(name string, serve bool) error {
+	if cfg.Projects == nil {
+		return fmt.Errorf("no projects registered")
+	}
+
+	proj, ok := cfg.Projects[name]
+	if !ok {
+		return fmt.Errorf("project %q not found", name)
+	}
+
+	proj.Serve = serve
+	cfg.Projects[name] = proj
+
+	if err := cfg.Save(cfgPath); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+
+	action := "now served"
+	if !serve {
+		action = "no longer served"
+	}
+	log.Info("Project %q is %s via gRPC", name, action)
 	return nil
 }

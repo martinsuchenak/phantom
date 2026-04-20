@@ -1,0 +1,33 @@
+{
+  "version": "0.2",
+  "words": [
+    "mdns",
+    "grpc",
+    "fuse",
+    "overlayfs",
+    "unionfs",
+    "gossip",
+    "unmount",
+    "unmounted",
+    "mountpoint",
+    "upperdir",
+    "workdir",
+    "whiteout",
+    "stash",
+    "bufconn",
+    "protobuf",
+    "syscall",
+    "pbuf",
+    "msgpack",
+    "miekg",
+    "hashicorp",
+    "paularlott",
+    "hanwen",
+    "fsnotify",
+    "golangci",
+    "gofmt",
+    "unserve",
+    "myapp",
+    "servedapp"
+  ]
+}

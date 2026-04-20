@@ -27,12 +27,32 @@ phantom start ~/myproject -b feature/auth --persistent
 | `--name, -n` | Overlay name (default: base dir name) |
 | `--branch, -b` | Git branch name (default: `phantom/<name>`) |
 | `--persistent, -p` | Keep overlay data across reboots |
+| `--repo` | Remote repo name to use as base |
+| `--node` | Remote node address as `host[:port]`; if omitted, auto-discovered via mDNS |
 
 Prints the mount point path to stdout. Capture it in scripts:
 
 ```bash
 PHANTOM_PATH=$(phantom start ~/myproject -n my-feature)
 cd "$PHANTOM_PATH"
+```
+
+#### Remote Overlays
+
+When `--repo` is given, phantom connects to the remote node's gRPC server, mounts its repo via FUSE, and creates the overlay on top. The AI agent sees a plain local filesystem. Use `phantom push` to sync changes back. A sentinel watcher enables automatic sync: when the agent writes `.phantom_commit` to the mount root, phantom detects it and pushes.
+
+If `--node` is omitted, phantom probes the LAN via mDNS (3-second timeout) to find a node advertising the requested repo. Specify `--node` explicitly for cross-subnet or non-multicast environments.
+
+```bash
+# Local overlay (existing behaviour)
+phantom start /path/to/repo --name agent1
+
+# Remote overlay — explicit node address
+phantom start --repo myapp --node 192.168.1.10 --name agent1
+phantom start --repo myapp --node 192.168.1.10:50051 --name agent1
+
+# Remote overlay — auto-discover node via mDNS (same LAN)
+phantom start --repo myapp --name agent1
 ```
 
 ### `phantom stop [name]`
@@ -390,6 +410,33 @@ Git repos: fetches and rebases. Non-git: remounts to refresh base layer. Warns i
 
 ---
 
+## Remote Overlays
+
+### `phantom node`
+
+Manage the phantom node daemon. The daemon joins the gossip ring, announces itself via mDNS, and serves files over gRPC so other nodes can use them as overlay base layers.
+
+| Subcommand | Description |
+|------------|-------------|
+| `phantom node start` | Start the daemon in the foreground. Writes PID to `~/.phantom/node.pid`. Reads settings from the `node:` config section. Announces the node via mDNS on startup. Periodically writes discovered peer state to `~/.phantom/peers.json` for CLI commands. |
+| `phantom node stop` | Stop the running daemon via SIGTERM (reads PID from `~/.phantom/node.pid`). |
+| `phantom node list` | List peers from the cached state file. Use `--mdns` to discover live peers on the LAN instead (no daemon required). |
+
+### `phantom push <name>`
+
+Push overlay changes to the remote node that holds the base repo. Only works for overlays created with `--repo`. If the remote repo is a git repo and `node.sync.auto_git_commit: true`, the remote node also runs `git commit`.
+
+```bash
+phantom push agent1
+phantom push agent1 --message "implement feature X"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--message, -m` | Commit message for the remote node |
+
+---
+
 ## Protection
 
 ### `phantom lock <name>` / `phantom unlock <name>`
@@ -545,23 +592,45 @@ phantom init --output /path/to/dir --force
 
 ### `phantom project`
 
-Manage registered projects. This allows using a short project name instead of absolute directory paths for any command that accepts a base directory.
+Manage registered projects. Projects serve two purposes: short-name aliases for base directories, and optionally exposing a directory over gRPC so other nodes can use it as a remote overlay base layer.
 
 ```bash
+# Register a project (local alias only)
 phantom project add myapp /path/to/my/app
+
+# Register and immediately expose via gRPC
+phantom project add myapp /path/to/my/app --serve
+
+# Toggle serving on an existing project
+phantom project serve myapp
+phantom project unserve myapp
+
 phantom project list
 phantom project remove myapp
 
-# Use the short name 'myapp' instead of a full path
+# Use the short name instead of a full path
 phantom start myapp -n my-feature
 phantom run myapp -a aider -t "fix bug"
 ```
 
 | Subcommand | Description |
 |------------|-------------|
-| `add <name> <path>` | Register a new project and map its base directory path |
-| `list` | List all registered projects and their paths |
-| `remove <name>` | Delete a project mapping |
+| `add <name> <path> [--serve]` | Register a project; `--serve` exposes it via gRPC |
+| `serve <name>` | Mark an existing project as served via gRPC |
+| `unserve <name>` | Remove the serve flag from a project |
+| `list` | List all registered projects, paths, and served status |
+| `remove <name>` | Delete a project registration |
+
+The `SERVED` column in `phantom project list` shows which projects the node daemon (`phantom node start`) will expose. The config format:
+
+```yaml
+projects:
+  myapp:
+    path: /path/to/myapp
+    serve: true   # exposed via gRPC; omit or false for local-only
+  local-only:
+    path: /path/to/other
+```
 
 
 ### `phantom config`
@@ -674,6 +743,10 @@ phantom completion powershell | Out-String | Invoke-Expression
 | `INVALID_CONFIG` | Configuration validation failed |
 | `OVERLAY_NOT_MOUNTED` | Overlay exists but is not mounted |
 | `OVERLAY_LOCKED` | Overlay is locked and cannot be cleaned up |
+| `ERR_REMOTE_UNAVAILABLE` | Remote node could not be reached |
+| `ERR_AUTH_FAILED` | Authentication to remote node failed |
+| `ERR_SYNC_FAILED` | Sync operation failed on remote node |
+| `ERR_FILE_TOO_LARGE` | File exceeds `node.sync.max_file_size_bytes` limit |
 
 ---
 

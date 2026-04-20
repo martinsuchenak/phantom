@@ -44,9 +44,38 @@ agent:
 agent_env:
   - "OVERLAY_ENABLED=true"       # extra env vars passed to agents
 
-projects:                        # project names mapped to absolute paths
-  myapp: "/Users/user/Projects/myapp"
+projects:                        # registered projects (local aliases + optional remote serving)
+  myapp:
+    path: "/Users/user/Projects/myapp"
+    serve: true                  # expose via gRPC for remote overlays (phantom node start)
+  local-only:
+    path: "/Users/user/Projects/other"
+                                 # serve omitted / false → local alias only
+
+node:
+  id: ""                         # Stable node identity. Auto-set from hostname if empty.
+  gossip_port: 7946              # UDP port for gossip ring membership.
+  grpc_port: 50051               # TCP port for gRPC file server.
+  seeds:                         # Bootstrap peers to join the ring.
+    - "192.168.1.10:7946"
+  auth:
+    mode: none                   # Auth mode: none | secret | mtls
+    secret: ""                   # Shared secret (mode=secret). Also: PHANTOM_NODE_SECRET env var.
+    cert_file: ""                # TLS certificate file path (mode=mtls).
+    key_file: ""                 # TLS private key file path (mode=mtls).
+    ca_file: ""                  # CA certificate file path (mode=mtls).
+  sync:
+    auto_git_commit: true        # Commit on remote after push if repo is git.
+    max_file_size_bytes: 52428800  # Max file size to sync (default 50MB). 0 = no limit.
 ```
+
+### Auth Modes
+
+- **none** — No authentication. Any node on the network can connect. Suitable for trusted LANs.
+- **secret** — Pre-shared token sent with every gRPC request. Set via `auth.secret` or the `PHANTOM_NODE_SECRET` env var. Gossip auth (phase 2) will also verify the token in gossip messages.
+- **mtls** — Mutual TLS on gRPC connections. Both nodes present certificates signed by the same CA.
+
+If auth modes mismatch, the server returns `UNAUTHENTICATED` and phantom surfaces a readable error.
 
 ### Validation Rules
 
@@ -84,6 +113,8 @@ Set to `0` to disable. For manual control, use `phantom prune`.
 ├── config.yaml              # Configuration (0600)
 ├── hooks.yaml               # Post-run hooks (0600)
 ├── phantom.log              # Application log
+├── node.pid                 # Node daemon PID file (0600)
+├── peers.json               # Peer state snapshot (daemon ↔ CLI IPC, 0600)
 ├── state/                   # Overlay state files (0600 each)
 │   ├── feature-a.json
 │   └── feature-b.json
@@ -95,6 +126,9 @@ Set to `0` to disable. For manual control, use `phantom prune`.
 ├── mnt/                     # Mount points (0700)
 │   ├── feature-a/
 │   └── feature-b/
+├── remote-mounts/           # FUSE-mounted remote repos (0700)
+│   └── 192_168_1_10_50051/
+│       └── myapp/
 ├── logs/                    # Agent execution logs (0700)
 │   ├── feature-a.log
 │   └── feature-b.log

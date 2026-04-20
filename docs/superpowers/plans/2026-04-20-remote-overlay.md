@@ -64,7 +64,7 @@
 
 **Files:** `go.mod`, `go.sum`, `Makefile`
 
-- [ ] **Step 1: Install protoc compiler**
+- [x] **Step 1: Install protoc compiler**
 
 ```bash
 # macOS
@@ -75,7 +75,7 @@ protoc --version
 # Expected: libprotoc 3.x or 4.x or 25.x
 ```
 
-- [ ] **Step 2: Install Go protoc plugins**
+- [x] **Step 2: Install Go protoc plugins**
 
 ```bash
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -85,7 +85,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 which protoc-gen-go protoc-gen-go-grpc
 ```
 
-- [ ] **Step 3: Add Go module dependencies**
+- [x] **Step 3: Add Go module dependencies**
 
 ```bash
 cd /path/to/phantom
@@ -99,7 +99,7 @@ go get google.golang.org/grpc/test/bufconn@latest
 go get github.com/fsnotify/fsnotify@latest
 ```
 
-- [ ] **Step 4: Add `proto` Makefile target**
+- [x] **Step 4: Add `proto` Makefile target**
 
 Add to `Makefile`:
 
@@ -114,14 +114,14 @@ proto: ## Generate Go code from .proto definitions
 	  internal/rpc/proto/file.proto
 ```
 
-- [ ] **Step 5: Verify module graph builds**
+- [x] **Step 5: Verify module graph builds**
 
 ```bash
 go build ./...
 # Expected: no errors (no new source files yet, just updated go.mod)
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add go.mod go.sum Makefile
@@ -134,7 +134,7 @@ git commit -m "chore: add grpc, go-fuse, gossip, protobuf dependencies; add make
 
 **Files:** `internal/config/config.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/config/config_test.go — add to existing test file
@@ -180,14 +180,14 @@ func TestNodeConfigGetPeersStatePath(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 go test ./internal/config/... -run TestNodeConfig -v
 # Expected: FAIL — cfg.Node undefined
 ```
 
-- [ ] **Step 3: Add Node config structs and helpers to `internal/config/config.go`**
+- [x] **Step 3: Add Node config structs and helpers to `internal/config/config.go`**
 
 Add after the `Agent` struct and before `MaxTimeoutMinutes`:
 
@@ -281,14 +281,14 @@ func (c *Config) GetPeersStatePath() string {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 ```bash
 go test ./internal/config/... -run TestNodeConfig -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/config/config.go internal/config/config_test.go
@@ -301,7 +301,7 @@ git commit -m "feat(config): add NodeConfig section with gossip, grpc, auth, syn
 
 **Files:** `pkg/api/types.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // pkg/api/types_test.go — add to existing test file
@@ -348,14 +348,14 @@ func TestRemoteErrorCodes(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer|TestRemoteErrorCodes" -v
 # Expected: FAIL — Overlay.Remote undefined, Peer undefined, error codes undefined
 ```
 
-- [ ] **Step 3: Add fields, Peer type, and error codes to `pkg/api/types.go`**
+- [x] **Step 3: Add fields, Peer type, and error codes to `pkg/api/types.go`**
 
 In the `Overlay` struct, add after the last existing field:
 
@@ -388,14 +388,14 @@ ErrSyncFailed        = "ERR_SYNC_FAILED"
 ErrFileTooLarge      = "ERR_FILE_TOO_LARGE"
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 ```bash
 go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer|TestRemoteErrorCodes" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/api/types.go pkg/api/types_test.go
@@ -408,7 +408,7 @@ git commit -m "feat(api): add remote overlay fields, Peer type, and remote error
 
 **Files:** `internal/rpc/proto/file.proto`, generated `.pb.go` files
 
-- [ ] **Step 1: Create the proto directory and write `file.proto`**
+- [x] **Step 1: Create the proto directory and write `file.proto`**
 
 ```bash
 mkdir -p internal/rpc/proto
@@ -500,7 +500,7 @@ message SyncResponse {
 }
 ```
 
-- [ ] **Step 2: Generate Go code**
+- [x] **Step 2: Generate Go code**
 
 ```bash
 # Use the Makefile target
@@ -519,14 +519,14 @@ ls internal/rpc/proto/
 # file.pb.go  file.proto  file_grpc.pb.go
 ```
 
-- [ ] **Step 3: Verify it compiles**
+- [x] **Step 3: Verify it compiles**
 
 ```bash
 go build ./internal/rpc/proto/...
 # Expected: no errors
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/rpc/proto/
@@ -539,7 +539,7 @@ git commit -m "feat(rpc): add FileService proto definition and generated code"
 
 **Files:** `internal/rpc/server.go`, `internal/rpc/server_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/rpc/server_test.go`:
 
@@ -731,14 +731,14 @@ func TestRead_WithOffset(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/rpc/... -run "TestListRepos|TestStat|TestReadDir|TestRead" -v
 # Expected: FAIL — rpc.NewFileServer undefined
 ```
 
-- [ ] **Step 3: Implement `internal/rpc/server.go`**
+- [x] **Step 3: Implement `internal/rpc/server.go`**
 
 ```go
 package rpc
@@ -1000,14 +1000,14 @@ func tryGitCommit(dir, message string) (bool, string) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/rpc/... -run "TestListRepos|TestStat|TestReadDir|TestRead" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/rpc/server.go internal/rpc/server_test.go
@@ -1020,7 +1020,7 @@ git commit -m "feat(rpc): implement FileServer with Stat, ReadDir, Read, ListRep
 
 **Files:** `internal/rpc/auth.go`, `internal/rpc/auth_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/rpc/auth_test.go`:
 
@@ -1118,14 +1118,14 @@ func TestAuthMTLSSkipsMetadataCheck(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/rpc/... -run TestAuth -v
 # Expected: FAIL — rpc.AuthOptions, rpc.UnaryAuthInterceptor undefined
 ```
 
-- [ ] **Step 3: Implement `internal/rpc/auth.go`**
+- [x] **Step 3: Implement `internal/rpc/auth.go`**
 
 ```go
 package rpc
@@ -1212,14 +1212,14 @@ func StreamClientSecretInterceptor(secret string) grpc.StreamClientInterceptor {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/rpc/... -run TestAuth -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/rpc/auth.go internal/rpc/auth_test.go
@@ -1232,7 +1232,7 @@ git commit -m "feat(rpc): add auth middleware for none/secret/mTLS modes"
 
 **Files:** `internal/rpc/client.go`, `internal/rpc/client_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `internal/rpc/client_test.go`:
 
@@ -1313,14 +1313,14 @@ func TestFileClientReadAll(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/rpc/... -run "TestFileClient" -v
 # Expected: FAIL — rpc.NewFileClient undefined
 ```
 
-- [ ] **Step 3: Implement `internal/rpc/client.go`**
+- [x] **Step 3: Implement `internal/rpc/client.go`**
 
 ```go
 package rpc
@@ -1504,14 +1504,14 @@ func (c *FileClient) Inner() proto.FileServiceClient {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/rpc/... -v
 # Expected: all PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/rpc/client.go internal/rpc/client_test.go
@@ -1528,7 +1528,7 @@ Note: `internal/node/peer.go` is intentionally omitted. All code uses `api.Peer`
 
 **Gossip auth note (phase 2):** The spec requires auth on both gossip and gRPC planes. In this phase, auth is enforced on gRPC only. Gossip auth (embedding token in gossip meta, verifying incoming peer meta against configured secret) is deferred to phase 2. This is safe for trusted LAN deployments with `auth.mode: none` or `secret` (since the secret is also checked on gRPC connections). mTLS users should use network-level isolation until phase 2.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/node/registry_test.go`:
 
@@ -1602,14 +1602,14 @@ func TestRegistryUpsertUpdates(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/node/... -v
 # Expected: FAIL — node package does not exist
 ```
 
-- [ ] **Step 3: Create `internal/node/registry.go`**
+- [x] **Step 3: Create `internal/node/registry.go`**
 
 ```go
 package node
@@ -1673,14 +1673,14 @@ func (r *Registry) All() []api.Peer {
 }
 ```
 
-- [ ] **Step 4: Run registry tests to verify they pass**
+- [x] **Step 4: Run registry tests to verify they pass**
 
 ```bash
 go test ./internal/node/... -run "TestRegistry" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Create `internal/node/node.go`**
+- [x] **Step 5: Create `internal/node/node.go`**
 
 This wraps `github.com/paularlott/gossip`. Check the library README at `github.com/paularlott/gossip` for the exact API — adapt method names as needed. The interface below is what the rest of the system calls.
 
@@ -1780,7 +1780,7 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
 }
 ```
 
-- [ ] **Step 6: Create `internal/node/peers_state.go`**
+- [x] **Step 6: Create `internal/node/peers_state.go`**
 
 This provides the daemon ↔ CLI IPC mechanism. The daemon writes peer state to a JSON file; CLI commands read it.
 
@@ -1828,7 +1828,7 @@ func ReadPeersState(path string) (*PeersState, error) {
 }
 ```
 
-- [ ] **Step 7: Verify it compiles**
+- [x] **Step 7: Verify it compiles**
 
 ```bash
 go build ./internal/node/...
@@ -1837,7 +1837,7 @@ go build ./internal/node/...
 go test ./internal/node/... -run TestRegistry -v
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/node/
@@ -1850,7 +1850,7 @@ git commit -m "feat(node): gossip peer registry, node lifecycle, and peers state
 
 **Files:** `internal/commands/node_start.go`, `internal/commands/node_stop.go`, `internal/commands/node_list.go`, `internal/commands/repos.go`, `internal/commands/root.go`
 
-- [ ] **Step 1: Create `internal/commands/node_start.go`**
+- [x] **Step 1: Create `internal/commands/node_start.go`**
 
 ```go
 package commands
@@ -2007,7 +2007,7 @@ func outboundIP() string {
 }
 ```
 
-- [ ] **Step 2: Create `internal/commands/node_stop.go`**
+- [x] **Step 2: Create `internal/commands/node_stop.go`**
 
 ```go
 package commands
@@ -2056,7 +2056,7 @@ func doNodeStop(_ context.Context, _ *cli.Command) error {
 }
 ```
 
-- [ ] **Step 3: Create `internal/commands/node_list.go`**
+- [x] **Step 3: Create `internal/commands/node_list.go`**
 
 ```go
 package commands
@@ -2101,7 +2101,7 @@ func doNodeList(_ context.Context, _ *cli.Command) error {
 }
 ```
 
-- [ ] **Step 4: Create `internal/commands/repos.go`**
+- [x] **Step 4: Create `internal/commands/repos.go`**
 
 ```go
 package commands
@@ -2143,7 +2143,7 @@ func doRepos(_ context.Context, _ *cli.Command) error {
 }
 ```
 
-- [ ] **Step 5: Register new commands in `internal/commands/root.go`**
+- [x] **Step 5: Register new commands in `internal/commands/root.go`**
 
 In the `Commands` slice inside `Execute()`, add after `NewProjectCommand()`:
 
@@ -2153,14 +2153,14 @@ NewReposCommand(),
 NewPushCommand(), // defined in Task 15
 ```
 
-- [ ] **Step 6: Build to verify compilation**
+- [x] **Step 6: Build to verify compilation**
 
 ```bash
 go build ./...
 # Expected: no errors
 ```
 
-- [ ] **Step 7: Smoke test**
+- [x] **Step 7: Smoke test**
 
 ```bash
 ./dist/phantom node --help
@@ -2170,7 +2170,7 @@ go build ./...
 # Expected: error "cannot read peer state" (daemon not running)
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/commands/node_start.go internal/commands/node_stop.go \
@@ -2185,7 +2185,7 @@ git commit -m "feat(commands): add phantom node start/stop/list and phantom repo
 
 **Files:** `internal/remotefs/client.go`, `internal/remotefs/fs.go`, `internal/remotefs/fs_test.go`, `internal/remotefs/mount.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/remotefs/fs_test.go`:
 
@@ -2273,14 +2273,14 @@ func TestRemoteFSReadDir(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/remotefs/... -v
 # Expected: FAIL — package does not exist
 ```
 
-- [ ] **Step 3: Create `internal/remotefs/client.go`**
+- [x] **Step 3: Create `internal/remotefs/client.go`**
 
 ```go
 package remotefs
@@ -2382,7 +2382,7 @@ func (r *RemoteFS) InnerClient() proto.FileServiceClient {
 }
 ```
 
-- [ ] **Step 4: Create `internal/remotefs/fs.go`**
+- [x] **Step 4: Create `internal/remotefs/fs.go`**
 
 This implements the `go-fuse` `fs.InodeEmbedder` interface. Adapt if the go-fuse API differs.
 
@@ -2496,7 +2496,7 @@ func joinPath(base, name string) string {
 }
 ```
 
-- [ ] **Step 5: Create `internal/remotefs/mount.go`**
+- [x] **Step 5: Create `internal/remotefs/mount.go`**
 
 ```go
 package remotefs
@@ -2560,21 +2560,21 @@ func WaitUntilMounted(mountPoint string, timeout time.Duration) error {
 }
 ```
 
-- [ ] **Step 6: Run fs tests**
+- [x] **Step 6: Run fs tests**
 
 ```bash
 go test ./internal/remotefs/... -run "TestRemoteFS" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 7: Verify build**
+- [x] **Step 7: Verify build**
 
 ```bash
 go build ./internal/remotefs/...
 # Expected: no errors
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/remotefs/
@@ -2589,7 +2589,7 @@ git commit -m "feat(remotefs): FUSE client that proxies reads to remote phantom 
 
 **`--node` flag semantics:** In phase 1, `--node` accepts a `host[:port]` address directly (e.g., `192.168.1.10` or `192.168.1.10:50051`). If no port is given, the configured `node.grpc_port` is used. Auto-discovery via the gossip registry (passing a node ID that gets resolved to an address) requires a running daemon and will be added in a follow-up.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `internal/commands/start_test.go` (check existing test file for the right test function pattern):
 
@@ -2618,14 +2618,14 @@ func TestProcessStartRepoPlusBaseDirIsError(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/commands/... -run "TestProcessStartRemote|TestProcessStartLocal|TestProcessStartRepoPlusBaseDir" -v
 # Expected: FAIL — validateStartArgs undefined
 ```
 
-- [ ] **Step 3: Add remote flags and validation to `internal/commands/start.go`**
+- [x] **Step 3: Add remote flags and validation to `internal/commands/start.go`**
 
 Add `--repo` and `--node` flags to `NewStartCommand()`:
 
@@ -2759,21 +2759,21 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 
 Add required imports: `"github.com/martinsuchenak/phantom/internal/remotefs"`, `"github.com/martinsuchenak/phantom/internal/rpc"`, `"github.com/martinsuchenak/phantom/internal/state"`, `"strings"`, `"time"`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/commands/... -run "TestProcessStartRemote|TestProcessStartLocal|TestProcessStartRepoPlusBaseDir" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Build**
+- [x] **Step 5: Build**
 
 ```bash
 go build ./...
 # Expected: no errors
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/commands/start.go internal/commands/start_test.go
@@ -2788,7 +2788,7 @@ git commit -m "feat(commands): extend phantom start with --repo/--node for remot
 
 The walker inspects the raw overlay upper dir to produce a list of changes to sync.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/sync/walker_test.go`:
 
@@ -2927,14 +2927,14 @@ func TestWalkerFileSizeLimit(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/sync/... -run "TestWalker" -v
 # Expected: FAIL — package does not exist
 ```
 
-- [ ] **Step 3: Create `internal/sync/walker.go`**
+- [x] **Step 3: Create `internal/sync/walker.go`**
 
 ```go
 package sync
@@ -3030,14 +3030,14 @@ func isOpaqueDir(path string) bool {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/sync/... -run "TestWalker" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/sync/walker.go internal/sync/walker_test.go
@@ -3050,7 +3050,7 @@ git commit -m "feat(sync): upper dir walker with whiteout, opaque dir, and file 
 
 **Files:** `internal/sync/syncer.go`, `internal/sync/syncer_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/sync/syncer_test.go`:
 
@@ -3145,14 +3145,14 @@ func TestSyncerDeleteFile(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/sync/... -run "TestSyncer" -v
 # Expected: FAIL — phantomsync.NewSyncer undefined
 ```
 
-- [ ] **Step 3: Create `internal/sync/syncer.go`**
+- [x] **Step 3: Create `internal/sync/syncer.go`**
 
 ```go
 package sync
@@ -3242,7 +3242,7 @@ func (s *Syncer) Push(ctx context.Context, upperDir, commitMessage string) (Sync
 }
 ```
 
-- [ ] **Step 4: Run all sync tests**
+- [x] **Step 4: Run all sync tests**
 
 ```bash
 go test ./internal/sync/... -v
@@ -3252,7 +3252,7 @@ go test ./internal/rpc/... -v
 # Expected: all PASS (SyncFiles implemented in Task 5)
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/sync/syncer.go internal/sync/syncer_test.go
@@ -3265,7 +3265,7 @@ git commit -m "feat(sync): push engine streams upper dir changes to remote node 
 
 **Files:** `internal/sync/sentinel.go`, `internal/sync/sentinel_test.go`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `internal/sync/sentinel_test.go`:
 
@@ -3369,14 +3369,14 @@ func TestSentinelRespectsContextCancellation(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 go test ./internal/sync/... -run "TestSentinel" -v
 # Expected: FAIL — phantomsync.Watch undefined
 ```
 
-- [ ] **Step 3: Create `internal/sync/sentinel.go`**
+- [x] **Step 3: Create `internal/sync/sentinel.go`**
 
 ```go
 package sync
@@ -3450,14 +3450,14 @@ func WriteResult(mountPoint, result string) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 go test ./internal/sync/... -run "TestSentinel" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/sync/sentinel.go internal/sync/sentinel_test.go
@@ -3470,7 +3470,7 @@ git commit -m "feat(sync): sentinel watcher triggers push on .phantom_commit wri
 
 **Files:** `internal/commands/push.go`, `internal/commands/push_test.go`, `internal/commands/root.go`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/commands/push_test.go`:
 
@@ -3517,14 +3517,14 @@ func TestPushAcceptsRemoteOverlay(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 go test ./internal/commands/... -run "TestPushCommand" -v
 # Expected: FAIL — commands.NewPushCommand undefined
 ```
 
-- [ ] **Step 3: Create `internal/commands/push.go`**
+- [x] **Step 3: Create `internal/commands/push.go`**
 
 ```go
 package commands
@@ -3628,7 +3628,7 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
 }
 ```
 
-- [ ] **Step 4: Verify `NewPushCommand` is registered in `root.go`**
+- [x] **Step 4: Verify `NewPushCommand` is registered in `root.go`**
 
 Ensure `NewPushCommand()` is in the `Commands` slice (added in Task 9 Step 5). Rebuild:
 
@@ -3638,7 +3638,7 @@ go build ./...
 # Expected: shows usage for phantom push
 ```
 
-- [ ] **Step 5: Wire sentinel into phantom start for remote overlays**
+- [x] **Step 5: Wire sentinel into phantom start for remote overlays**
 
 In `processStartRemote` in `internal/commands/start.go`, add the sentinel watcher after the overlay is created. This requires storing the proto client reference before wrapping in RemoteFS.
 
@@ -3671,14 +3671,14 @@ if overlayErr == nil {
 
 Note: This requires `ovl` to be loaded from the state store after `processStart` succeeds. The existing state update block already loads it — use that reference for the sentinel watcher.
 
-- [ ] **Step 6: Run all tests**
+- [x] **Step 6: Run all tests**
 
 ```bash
 go test ./... -v
 # Expected: all PASS
 ```
 
-- [ ] **Step 7: Final build and test**
+- [x] **Step 7: Final build and test**
 
 ```bash
 go test ./...
@@ -3686,7 +3686,7 @@ go build ./...
 # Expected: all pass, clean build
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add internal/commands/push.go internal/commands/push_test.go \
@@ -3702,7 +3702,7 @@ git commit -m "feat(commands): add phantom push command and wire sentinel watche
 
 This test verifies the full data flow: gRPC server → client → FUSE mount → read. It's gated behind a build tag so it doesn't run in normal `go test`.
 
-- [ ] **Step 1: Create `internal/sync/integration_test.go`**
+- [x] **Step 1: Create `internal/sync/integration_test.go`**
 
 ```go
 //go:build integration
@@ -3858,14 +3858,14 @@ func TestIntegration_ServerFUSEMountAndSync(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run integration test**
+- [x] **Step 2: Run integration test**
 
 ```bash
 # Requires FUSE installed (macFUSE on macOS, libfuse on Linux)
 go test ./internal/sync/... -tags=integration -run TestIntegration -v -timeout 60s
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/sync/integration_test.go
@@ -3878,7 +3878,7 @@ git commit -m "test(sync): add integration test for gRPC → FUSE → sync pipel
 
 **Files:** `docs/commands.md`, `docs/configuration.md`, `docs/workflows.md`
 
-- [ ] **Step 1: Update `docs/commands.md` — new commands**
+- [x] **Step 1: Update `docs/commands.md` — new commands**
 
 Find the existing `## phantom sync` section. Insert three new command sections immediately before it. Write them as plain markdown — no outer wrapper needed, just add the text:
 
@@ -3910,7 +3910,7 @@ Section 3 — phantom repos:
 >
 > Lists all repos advertised by peers in the gossip ring. Reads from `~/.phantom/peers.json` (requires daemon to be running).
 
-- [ ] **Step 2: Update `docs/commands.md` — new flags on `phantom start`**
+- [x] **Step 2: Update `docs/commands.md` — new flags on `phantom start`**
 
 Find the `phantom start` flags table. Append two rows:
 
@@ -3932,7 +3932,7 @@ phantom start --repo myapp --node 192.168.1.10 --name agent1
 phantom start --repo myapp --node 192.168.1.10:50051 --name agent1
 ```
 
-- [ ] **Step 3: Update `docs/configuration.md` — node section**
+- [x] **Step 3: Update `docs/configuration.md` — node section**
 
 After the existing `## agent` section, add a `## node` section with this description: "Controls the phantom node daemon — gossip ring membership, gRPC file server, and sync behaviour."
 
@@ -3967,7 +3967,7 @@ Then add a `### Auth modes` subsection describing the three modes:
 
 Close with: "If auth modes mismatch, the server returns UNAUTHENTICATED and phantom surfaces a readable error."
 
-- [ ] **Step 4: Update `docs/workflows.md` — remote overlay workflow**
+- [x] **Step 4: Update `docs/workflows.md` — remote overlay workflow**
 
 Append a `## Remote Overlay (Multi-Machine Parallel Agents)` section at the end of the file with this content:
 
@@ -4016,7 +4016,7 @@ echo "implement feature X" > ~/.phantom/mnt/agent1/.phantom_commit
 
 Closing paragraph: "Each node runs `phantom node start` and creates its own overlay with `phantom start --repo myapp --node <addr>`. All overlays share the same read-only base on Node A. Writes are isolated per overlay — push each agent's changes to Node A independently. Files exceeding `node.sync.max_file_size_bytes` are silently skipped during push."
 
-- [ ] **Step 5: Verify all docs render correctly**
+- [x] **Step 5: Verify all docs render correctly**
 
 ```bash
 # Check for broken markdown (if markdownlint is available)
@@ -4026,7 +4026,7 @@ markdownlint docs/commands.md docs/configuration.md docs/workflows.md
 wc -l docs/commands.md docs/configuration.md docs/workflows.md
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/commands.md docs/configuration.md docs/workflows.md

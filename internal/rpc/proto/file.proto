@@ -1,0 +1,80 @@
+syntax = "proto3";
+package phantom.v1;
+option go_package = "github.com/martinsuchenak/phantom/internal/rpc/proto;proto";
+
+service FileService {
+  rpc ListRepos(ListReposRequest)   returns (ListReposResponse);
+  rpc Stat(StatRequest)             returns (StatResponse);
+  rpc ReadDir(ReadDirRequest)       returns (ReadDirResponse);
+  rpc Read(ReadRequest)             returns (stream ReadChunk);
+  rpc SyncFiles(stream SyncChunk)   returns (SyncResponse);
+}
+
+message ListReposRequest {}
+
+message ListReposResponse {
+  repeated RepoInfo repos = 1;
+}
+
+message RepoInfo {
+  string name = 1;
+}
+
+message StatRequest {
+  string repo = 1;
+  string path = 2;
+}
+
+message StatResponse {
+  string name         = 1;
+  bool   is_dir       = 2;
+  int64  size         = 3;
+  int64  mod_time_unix = 4;
+  uint32 mode         = 5;
+}
+
+message ReadDirRequest {
+  string repo = 1;
+  string path = 2;
+}
+
+message ReadDirResponse {
+  repeated StatResponse entries = 1;
+}
+
+message ReadRequest {
+  string repo   = 1;
+  string path   = 2;
+  int64  offset = 3;
+  int64  length = 4;
+}
+
+message ReadChunk {
+  bytes data = 1;
+}
+
+message SyncChunk {
+  oneof payload {
+    SyncHeader header = 1;
+    SyncFile   file   = 2;
+  }
+}
+
+message SyncHeader {
+  string repo           = 1;
+  string commit_message = 2;
+}
+
+message SyncFile {
+  string path    = 1;
+  bytes  data    = 2;
+  bool   deleted = 3;
+  bool   is_dir  = 4;
+}
+
+message SyncResponse {
+  bool   success         = 1;
+  string error           = 2;
+  bool   git_committed   = 3;
+  string git_commit_hash = 4;
+}

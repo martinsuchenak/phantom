@@ -1,4 +1,4 @@
-.PHONY: all build build-linux build-darwin build-all clean install uninstall deps test lint fmt help dist release
+.PHONY: all build build-linux build-darwin build-all clean install uninstall deps test lint fmt help dist release proto
 
 # Binary name
 BINARY_NAME=phantom
@@ -138,6 +138,14 @@ endif
 	@echo "Pushing tag $(TAG)..."
 	git push origin $(TAG)
 	@echo "Tag $(TAG) pushed. GitHub Actions will create the release."
+
+proto: ## Generate Go code from .proto definitions
+	protoc \
+	  --go_out=. \
+	  --go_opt=paths=source_relative \
+	  --go-grpc_out=. \
+	  --go-grpc_opt=paths=source_relative \
+	  internal/rpc/proto/file.proto
 
 # Quick aliases
 linux: build-linux

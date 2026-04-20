@@ -424,3 +424,52 @@ phantom gc
 phantom prune --dry-run
 phantom prune
 ```
+
+---
+
+## Remote Overlay (Multi-Machine Parallel Agents)
+
+Run AI agents on different machines against the same source repo without cloning it.
+
+### Node A — serves the repo
+
+```yaml
+# ~/.phantom/config.yaml on Node A
+node:
+  id: "node-a"
+  seeds: []
+  repos:
+    - name: "myapp"
+      path: "/home/user/myapp"
+```
+
+```bash
+phantom node start   # run on Node A
+```
+
+### Node B — creates a remote overlay
+
+```yaml
+# ~/.phantom/config.yaml on Node B
+node:
+  id: "node-b"
+  seeds: ["192.168.1.10:7946"]
+```
+
+```bash
+phantom node start &
+phantom start --repo myapp --node 192.168.1.10 --name agent1
+```
+
+### Sync changes back to Node A
+
+```bash
+# Explicit push
+phantom push agent1 --message "implement feature X"
+
+# Sentinel: agent writes the file, phantom detects and syncs automatically
+echo "implement feature X" > ~/.phantom/mnt/agent1/.phantom_commit
+# Outcome written to .phantom_commit_result
+```
+
+Each node runs `phantom node start` and creates its own overlay with `phantom start --repo myapp --node <addr>`. All overlays share the same read-only base on Node A. Writes are isolated per overlay — push each agent's changes to Node A independently. Files exceeding `node.sync.max_file_size_bytes` are silently skipped during push.

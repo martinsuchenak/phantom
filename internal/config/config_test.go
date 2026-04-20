@@ -298,6 +298,46 @@ func TestConfigValidation(t *testing.T) {
 	}
 }
 
+func TestNodeConfigDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Node.GossipPort != 7946 {
+		t.Errorf("expected gossip port 7946, got %d", cfg.Node.GossipPort)
+	}
+	if cfg.Node.GRPCPort != 50051 {
+		t.Errorf("expected grpc port 50051, got %d", cfg.Node.GRPCPort)
+	}
+	if cfg.Node.Auth.Mode != "none" {
+		t.Errorf("expected auth mode 'none', got %q", cfg.Node.Auth.Mode)
+	}
+	if cfg.Node.Sync.MaxFileSizeBytes != 50*1024*1024 {
+		t.Errorf("expected max file size 50MB, got %d", cfg.Node.Sync.MaxFileSizeBytes)
+	}
+}
+
+func TestNodeConfigGetRemoteMountsPath(t *testing.T) {
+	cfg := DefaultConfig()
+	path := cfg.GetRemoteMountsPath()
+	if !filepath.IsAbs(path) {
+		t.Errorf("expected absolute path, got %q", path)
+	}
+}
+
+func TestNodeConfigGetNodePIDPath(t *testing.T) {
+	cfg := DefaultConfig()
+	path := cfg.GetNodePIDPath()
+	if !filepath.IsAbs(path) {
+		t.Errorf("expected absolute path, got %q", path)
+	}
+}
+
+func TestNodeConfigGetPeersStatePath(t *testing.T) {
+	cfg := DefaultConfig()
+	path := cfg.GetPeersStatePath()
+	if !filepath.IsAbs(path) {
+		t.Errorf("expected absolute path, got %q", path)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsHelper(s, substr))
 }
@@ -430,6 +470,238 @@ func TestSaveCreatesDirectory(t *testing.T) {
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Error("config file should exist")
+	}
+}
+
+func TestProjectUnmarshalLegacyString(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Write old-style projects as plain strings
+	content := `projects:
+  myapp: /path/to/myapp
+  other: /path/to/other
+`
+	os.WriteFile(configPath, []byte(content), 0644)
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if proj, ok := cfg.Projects["myapp"]; !ok {
+		t.Error("expected myapp project")
+	} else if proj.Path != "/path/to/myapp" {
+		t.Errorf("expected path /path/to/myapp, got %q", proj.Path)
+	} else if proj.Serve {
+		t.Error("expected serve to be false for legacy entries")
+	}
+}
+
+func TestProjectUnmarshalNewFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	content := `projects:
+  myapp:
+    path: /path/to/myapp
+    serve: true
+  other:
+    path: /path/to/other
+`
+	os.WriteFile(configPath, []byte(content), 0644)
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	myapp := cfg.Projects["myapp"]
+	if myapp.Path != "/path/to/myapp" {
+		t.Errorf("path: got %q", myapp.Path)
+	}
+	if !myapp.Serve {
+		t.Error("expected serve=true")
+	}
+
+	other := cfg.Projects["other"]
+	if other.Serve {
+		t.Error("expected serve=false when omitted")
+	}
+}
+
+func TestNodeReposMigratedToProjects(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Old-style config with node.repos
+	content := `node:
+  id: testnode
+  grpc_port: 50051
+  gossip_port: 7946
+  repos:
+    - name: myapp
+      path: /srv/myapp
+`
+	os.WriteFile(configPath, []byte(content), 0644)
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	// node.repos should be cleared
+	if len(cfg.Node.Repos) != 0 {
+		t.Errorf("expected node.repos to be cleared after migration, got %v", cfg.Node.Repos)
+	}
+
+	// project should exist with serve: true
+	proj, ok := cfg.Projects["myapp"]
+	if !ok {
+		t.Fatal("expected myapp to be migrated to projects")
+	}
+	if proj.Path != "/srv/myapp" {
+		t.Errorf("path: got %q, want /srv/myapp", proj.Path)
+	}
+	if !proj.Serve {
+		t.Error("expected migrated project to have serve: true")
+	}
+}
+
+func TestNodeReposMigrationPreservesExistingProject(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Project already exists in new format; node.repos also references it
+	content := `projects:
+  myapp:
+    path: /srv/myapp
+node:
+  repos:
+    - name: myapp
+      path: /srv/myapp
+`
+	os.WriteFile(configPath, []byte(content), 0644)
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if len(cfg.Node.Repos) != 0 {
+		t.Error("expected node.repos cleared")
+	}
+	if !cfg.Projects["myapp"].Serve {
+		t.Error("expected existing project to get serve: true from migration")
+	}
+}
+
+func TestEnsureNodeDefaults_GeneratesID(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Node.ID = "" // simulate missing
+
+	changes := cfg.EnsureNodeDefaults()
+
+	if cfg.Node.ID == "" {
+		t.Error("expected node ID to be set from hostname")
+	}
+	if len(changes) == 0 {
+		t.Error("expected at least one change to be reported")
+	}
+	found := false
+	for _, c := range changes {
+		if len(c) > 8 && c[:8] == "node.id " {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected node.id in changes, got %v", changes)
+	}
+}
+
+func TestEnsureNodeDefaults_NoChangesWhenFullyConfigured(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Node.ID = "my-node"
+	cfg.Node.GRPCPort = 50051
+	cfg.Node.GossipPort = 7946
+	cfg.Node.Auth.Mode = "none"
+	cfg.Node.Sync.MaxFileSizeBytes = 50 * 1024 * 1024
+
+	changes := cfg.EnsureNodeDefaults()
+	if len(changes) != 0 {
+		t.Errorf("expected no changes for fully configured node, got %v", changes)
+	}
+}
+
+func TestEnsureNodeDefaults_FillsZeroPorts(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Node.ID = "test-node"
+	cfg.Node.GRPCPort = 0
+	cfg.Node.GossipPort = 0
+
+	changes := cfg.EnsureNodeDefaults()
+
+	if cfg.Node.GRPCPort != 50051 {
+		t.Errorf("expected GRPCPort 50051, got %d", cfg.Node.GRPCPort)
+	}
+	if cfg.Node.GossipPort != 7946 {
+		t.Errorf("expected GossipPort 7946, got %d", cfg.Node.GossipPort)
+	}
+	if len(changes) != 2 {
+		t.Errorf("expected 2 changes, got %d: %v", len(changes), changes)
+	}
+}
+
+func TestEnsureNodeDefaults_FillsAuthAndSync(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Node.ID = "test-node"
+	cfg.Node.Auth.Mode = ""
+	cfg.Node.Sync.MaxFileSizeBytes = 0
+
+	changes := cfg.EnsureNodeDefaults()
+
+	if cfg.Node.Auth.Mode != "none" {
+		t.Errorf("expected auth mode %q, got %q", "none", cfg.Node.Auth.Mode)
+	}
+	if cfg.Node.Sync.MaxFileSizeBytes != 50*1024*1024 {
+		t.Errorf("expected max file size 50 MiB, got %d", cfg.Node.Sync.MaxFileSizeBytes)
+	}
+	if len(changes) != 2 {
+		t.Errorf("expected 2 changes, got %d: %v", len(changes), changes)
+	}
+}
+
+func TestEnsureNodeDefaults_PersistsViaRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Save a config with no node.id
+	original := DefaultConfig()
+	original.Node.ID = ""
+	if err := original.Save(configPath); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Load it, apply defaults, save again
+	loaded, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	changes := loaded.EnsureNodeDefaults()
+	if len(changes) == 0 {
+		t.Fatal("expected defaults to be applied")
+	}
+	if err := loaded.Save(configPath); err != nil {
+		t.Fatalf("save after defaults: %v", err)
+	}
+
+	// Reload and verify ID is persisted
+	reloaded, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.Node.ID == "" {
+		t.Error("expected node ID to survive save/load round-trip")
 	}
 }
 
