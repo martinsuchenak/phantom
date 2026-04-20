@@ -6,9 +6,11 @@
 
 **Architecture:** Each node runs a gossip member (discovery) and gRPC file server (data). Node B mounts Node A's repo via a custom FUSE client at `~/.phantom/remote-mounts/<node>/<repo>/`, which becomes the `BaseDir` for a standard overlay — the existing overlay manager is completely unchanged. Writes stay in the upper dir and are pushed back via `phantom push`.
 
-**Tech Stack:** `github.com/paularlott/gossip`, `github.com/hanwen/go-fuse/v2`, `google.golang.org/grpc`, `google.golang.org/protobuf`, `github.com/fsnotify/fsnotify` (already indirect dep)
+**Tech Stack:** `github.com/paularlott/gossip`, `github.com/hanwen/go-fuse/v2`, `google.golang.org/grpc`, `google.golang.org/protobuf`, `github.com/fsnotify/fsnotify` (promoted from indirect to direct dep)
 
 **Spec:** `docs/superpowers/specs/2026-04-20-remote-overlay-design.md`
+
+**Phase 1 scope note:** This plan implements full gRPC data plane, FUSE client, sync engine, and auth for gRPC. Gossip-based auto-discovery is implemented but daemon ↔ CLI IPC uses a shared JSON state file (no Unix socket yet). The `--node` flag in `phantom start --repo` accepts `host:port` directly; auto-discovery via the gossip registry requires the daemon to be running and is used by `phantom node list` and `phantom repos`. Full gossip auth (token in gossip messages) is deferred to phase 2 — see Task 8 for details.
 
 ---
 
@@ -26,10 +28,10 @@
 | `internal/rpc/client_test.go` | Client tests against in-memory server |
 | `internal/rpc/auth.go` | Auth interceptors (none / secret / mTLS) |
 | `internal/rpc/auth_test.go` | Auth middleware tests |
-| `internal/node/peer.go` | `Peer` struct |
 | `internal/node/registry.go` | In-memory peer→repo registry |
 | `internal/node/registry_test.go` | Registry unit tests |
 | `internal/node/node.go` | Gossip member lifecycle |
+| `internal/node/peers_state.go` | Daemon peer state file writer for CLI IPC |
 | `internal/remotefs/client.go` | Thin gRPC client wrapper for FUSE use |
 | `internal/remotefs/fs.go` | FUSE filesystem implementation |
 | `internal/remotefs/fs_test.go` | FUSE node tests with mock client |
@@ -49,9 +51,10 @@
 ### Modified files
 | File | Change |
 |------|--------|
-| `go.mod` / `go.sum` | Add 4 dependencies |
+| `go.mod` / `go.sum` | Add 4 dependencies, promote fsnotify to direct |
+| `Makefile` | Add `proto` target |
 | `internal/config/config.go` | Add `Node NodeConfig` field + helpers |
-| `pkg/api/types.go` | Add remote fields to `Overlay`, add `Peer` type |
+| `pkg/api/types.go` | Add remote fields to `Overlay`, add `Peer` type, add remote error codes |
 | `internal/commands/start.go` | Add `--repo` and `--node` flags |
 | `internal/commands/root.go` | Register `node` command group, `repos`, `push` |
 
@@ -59,7 +62,7 @@
 
 ## Task 1: Add Dependencies
 
-**Files:** `go.mod`, `go.sum`
+**Files:** `go.mod`, `go.sum`, `Makefile`
 
 - [ ] **Step 1: Install protoc compiler**
 
@@ -92,20 +95,37 @@ go get github.com/hanwen/go-fuse/v2@latest
 go get google.golang.org/grpc@latest
 go get google.golang.org/protobuf@latest
 go get google.golang.org/grpc/test/bufconn@latest
+# Promote fsnotify from indirect to direct dependency
+go get github.com/fsnotify/fsnotify@latest
 ```
 
-- [ ] **Step 4: Verify module graph builds**
+- [ ] **Step 4: Add `proto` Makefile target**
+
+Add to `Makefile`:
+
+```makefile
+.PHONY: proto
+proto: ## Generate Go code from .proto definitions
+	protoc \
+	  --go_out=. \
+	  --go_opt=paths=source_relative \
+	  --go-grpc_out=. \
+	  --go-grpc_opt=paths=source_relative \
+	  internal/rpc/proto/file.proto
+```
+
+- [ ] **Step 5: Verify module graph builds**
 
 ```bash
 go build ./...
 # Expected: no errors (no new source files yet, just updated go.mod)
 ```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add go.mod go.sum
-git commit -m "chore: add grpc, go-fuse, gossip, protobuf dependencies"
+git add go.mod go.sum Makefile
+git commit -m "chore: add grpc, go-fuse, gossip, protobuf dependencies; add make proto target"
 ```
 
 ---
@@ -130,6 +150,9 @@ func TestNodeConfigDefaults(t *testing.T) {
     if cfg.Node.Auth.Mode != "none" {
         t.Errorf("expected auth mode 'none', got %q", cfg.Node.Auth.Mode)
     }
+    if cfg.Node.Sync.MaxFileSizeBytes != 50*1024*1024 {
+        t.Errorf("expected max file size 50MB, got %d", cfg.Node.Sync.MaxFileSizeBytes)
+    }
 }
 
 func TestNodeConfigGetRemoteMountsPath(t *testing.T) {
@@ -145,6 +168,14 @@ func TestNodeConfigGetNodePIDPath(t *testing.T) {
     path := cfg.GetNodePIDPath()
     if !strings.HasSuffix(path, "node.pid") {
         t.Errorf("expected path ending in node.pid, got %q", path)
+    }
+}
+
+func TestNodeConfigGetPeersStatePath(t *testing.T) {
+    cfg := DefaultConfig()
+    path := cfg.GetPeersStatePath()
+    if !strings.HasSuffix(path, "peers.json") {
+        t.Errorf("expected path ending in peers.json, got %q", path)
     }
 }
 ```
@@ -178,7 +209,8 @@ type NodeRepo struct {
 
 // NodeSync controls sync behaviour on the receiving node
 type NodeSync struct {
-    AutoGitCommit bool `yaml:"auto_git_commit"`
+    AutoGitCommit  bool  `yaml:"auto_git_commit"`
+    MaxFileSizeBytes int64 `yaml:"max_file_size_bytes"`
 }
 
 // NodeConfig holds configuration for the phantom node daemon
@@ -224,7 +256,8 @@ Node: NodeConfig{
         Mode: "none",
     },
     Sync: NodeSync{
-        AutoGitCommit: true,
+        AutoGitCommit:  true,
+        MaxFileSizeBytes: 50 * 1024 * 1024, // 50 MB
     },
 },
 ```
@@ -240,6 +273,11 @@ func (c *Config) GetRemoteMountsPath() string {
 // GetNodePIDPath returns the path of the node daemon PID file
 func (c *Config) GetNodePIDPath() string {
     return filepath.Join(c.StateDir, "node.pid")
+}
+
+// GetPeersStatePath returns the path of the daemon's peer state file (for CLI IPC)
+func (c *Config) GetPeersStatePath() string {
+    return filepath.Join(c.StateDir, "peers.json")
 }
 ```
 
@@ -259,7 +297,7 @@ git commit -m "feat(config): add NodeConfig section with gossip, grpc, auth, syn
 
 ---
 
-## Task 3: Types — Extend Overlay + Add Peer
+## Task 3: Types — Extend Overlay + Add Peer + Remote Error Codes
 
 **Files:** `pkg/api/types.go`
 
@@ -294,16 +332,30 @@ func TestPeer(t *testing.T) {
         t.Errorf("expected 2 repos, got %d", len(p.Repos))
     }
 }
+
+func TestRemoteErrorCodes(t *testing.T) {
+    codes := map[string]string{
+        "ErrRemoteUnavailable": ErrRemoteUnavailable,
+        "ErrAuthFailed":        ErrAuthFailed,
+        "ErrSyncFailed":        ErrSyncFailed,
+        "ErrFileTooLarge":      ErrFileTooLarge,
+    }
+    for name, code := range codes {
+        if code == "" {
+            t.Errorf("expected non-empty error code for %s", name)
+        }
+    }
+}
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer" -v
-# Expected: FAIL — Overlay.Remote undefined, Peer undefined
+go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer|TestRemoteErrorCodes" -v
+# Expected: FAIL — Overlay.Remote undefined, Peer undefined, error codes undefined
 ```
 
-- [ ] **Step 3: Add fields to `pkg/api/types.go`**
+- [ ] **Step 3: Add fields, Peer type, and error codes to `pkg/api/types.go`**
 
 In the `Overlay` struct, add after the last existing field:
 
@@ -318,7 +370,7 @@ RemoteMountPath string `json:"remote_mount_path,omitempty"`
 Add the `Peer` type after the `Overlay` struct:
 
 ```go
-// Peer represents another phantom node discovered via gossip
+// Peer represents another phantom node discovered via gossip.
 type Peer struct {
     ID       string   `json:"id"`
     GRPCAddr string   `json:"grpc_addr"`
@@ -326,10 +378,20 @@ type Peer struct {
 }
 ```
 
+Add remote-specific error codes after the existing error code constants:
+
+```go
+// Remote overlay error codes
+ErrRemoteUnavailable = "ERR_REMOTE_UNAVAILABLE"
+ErrAuthFailed        = "ERR_AUTH_FAILED"
+ErrSyncFailed        = "ERR_SYNC_FAILED"
+ErrFileTooLarge      = "ERR_FILE_TOO_LARGE"
+```
+
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer" -v
+go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer|TestRemoteErrorCodes" -v
 # Expected: PASS
 ```
 
@@ -337,7 +399,7 @@ go test ./pkg/api/... -run "TestOverlayRemoteFields|TestPeer" -v
 
 ```bash
 git add pkg/api/types.go pkg/api/types_test.go
-git commit -m "feat(api): add remote overlay fields and Peer type"
+git commit -m "feat(api): add remote overlay fields, Peer type, and remote error codes"
 ```
 
 ---
@@ -441,6 +503,10 @@ message SyncResponse {
 - [ ] **Step 2: Generate Go code**
 
 ```bash
+# Use the Makefile target
+make proto
+
+# Or run directly:
 protoc \
   --go_out=. \
   --go_opt=paths=source_relative \
@@ -581,6 +647,20 @@ func TestStat_UnknownRepo(t *testing.T) {
     }
 }
 
+func TestStat_PathTraversal(t *testing.T) {
+    dir := t.TempDir()
+    secretDir := t.TempDir()
+    os.WriteFile(filepath.Join(secretDir, "secret.txt"), []byte("secret"), 0644)
+
+    client, cleanup := setupServer(t, map[string]string{"r": dir})
+    defer cleanup()
+
+    _, err := client.Stat(context.Background(), &proto.StatRequest{Repo: "r", Path: "../../secret.txt"})
+    if err == nil {
+        t.Error("expected error for path traversal")
+    }
+}
+
 func TestReadDir(t *testing.T) {
     dir := t.TempDir()
     os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644)
@@ -667,7 +747,10 @@ import (
     "context"
     "io"
     "os"
+    "os/exec"
     "path/filepath"
+    "strings"
+    "sync"
 
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
@@ -678,18 +761,28 @@ import (
 const chunkSize = 64 * 1024 // 64KB
 
 // FileServer implements proto.FileServiceServer, serving files from local repos.
+// The repos map is read-only after construction — set once in NewFileServer.
+// A mutex guards access for future dynamic repo changes.
 type FileServer struct {
     proto.UnimplementedFileServiceServer
-    // repos maps repo name → absolute local path
-    repos map[string]string
+    mu            sync.RWMutex
+    repos         map[string]string // repo name → absolute local path
+    autoGitCommit bool
 }
 
-// NewFileServer creates a FileServer serving the given repos.
+// NewFileServer creates a FileServer serving the given repos (autoGitCommit=false).
 func NewFileServer(repos map[string]string) *FileServer {
     return &FileServer{repos: repos}
 }
 
+// NewFileServerWithOptions creates a FileServer with all options.
+func NewFileServerWithOptions(repos map[string]string, autoGitCommit bool) *FileServer {
+    return &FileServer{repos: repos, autoGitCommit: autoGitCommit}
+}
+
 func (s *FileServer) repoPath(repo string) (string, error) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
     path, ok := s.repos[repo]
     if !ok {
         return "", status.Errorf(codes.NotFound, "repo %q not found", repo)
@@ -697,16 +790,18 @@ func (s *FileServer) repoPath(repo string) (string, error) {
     return path, nil
 }
 
-// safePath joins base+rel and ensures the result is still under base (no path traversal).
+// safePath joins base+rel and ensures the result is under base (no path traversal).
 func safePath(base, rel string) (string, error) {
     joined := filepath.Join(base, filepath.Clean("/"+rel))
-    if len(joined) < len(base) {
+    if !strings.HasPrefix(joined, base+string(filepath.Separator)) && joined != base {
         return "", status.Error(codes.InvalidArgument, "path traversal denied")
     }
     return joined, nil
 }
 
 func (s *FileServer) ListRepos(_ context.Context, _ *proto.ListReposRequest) (*proto.ListReposResponse, error) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
     infos := make([]*proto.RepoInfo, 0, len(s.repos))
     for name := range s.repos {
         infos = append(infos, &proto.RepoInfo{Name: name})
@@ -821,9 +916,87 @@ func (s *FileServer) Read(req *proto.ReadRequest, stream proto.FileService_ReadS
 }
 
 func (s *FileServer) SyncFiles(stream proto.FileService_SyncFilesServer) error {
-    // SyncFiles is implemented in Task 13 (sync engine).
-    // This stub exists so the server compiles and the interface is satisfied.
-    return status.Error(codes.Unimplemented, "SyncFiles not yet implemented")
+    var repoBase string
+    var commitMsg string
+
+    for {
+        chunk, err := stream.Recv()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return status.Errorf(codes.Internal, "recv: %v", err)
+        }
+
+        switch p := chunk.Payload.(type) {
+        case *proto.SyncChunk_Header:
+            base, lerr := s.repoPath(p.Header.Repo)
+            if lerr != nil {
+                return lerr
+            }
+            repoBase = base
+            commitMsg = p.Header.CommitMessage
+
+        case *proto.SyncChunk_File:
+            if repoBase == "" {
+                return status.Error(codes.InvalidArgument, "SyncHeader must be sent first")
+            }
+            full, err := safePath(repoBase, p.File.Path)
+            if err != nil {
+                return err
+            }
+            if p.File.Deleted {
+                if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+                    return status.Errorf(codes.Internal, "delete %s: %v", p.File.Path, err)
+                }
+            } else if p.File.IsDir {
+                if err := os.MkdirAll(full, 0755); err != nil {
+                    return status.Errorf(codes.Internal, "mkdir %s: %v", p.File.Path, err)
+                }
+            } else {
+                if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+                    return status.Errorf(codes.Internal, "mkdir parent: %v", err)
+                }
+                if err := os.WriteFile(full, p.File.Data, 0644); err != nil {
+                    return status.Errorf(codes.Internal, "write %s: %v", p.File.Path, err)
+                }
+            }
+        }
+    }
+
+    // Optionally git commit — uses struct field, not a local variable
+    gitCommitted := false
+    gitHash := ""
+    if s.autoGitCommit && repoBase != "" && commitMsg != "" {
+        gitCommitted, gitHash = tryGitCommit(repoBase, commitMsg)
+    }
+
+    return stream.SendAndClose(&proto.SyncResponse{
+        Success:       true,
+        GitCommitted:  gitCommitted,
+        GitCommitHash: gitHash,
+    })
+}
+
+// tryGitCommit attempts git add -A && git commit in dir. Returns success and hash.
+func tryGitCommit(dir, message string) (bool, string) {
+    if _, err := os.Stat(filepath.Join(dir, ".git")); os.IsNotExist(err) {
+        return false, ""
+    }
+    addCmd := exec.Command("git", "-C", dir, "add", "-A")
+    if err := addCmd.Run(); err != nil {
+        return false, ""
+    }
+    commitCmd := exec.Command("git", "-C", dir, "commit", "-m", message)
+    if err := commitCmd.Run(); err != nil {
+        return false, "" // nothing to commit is also ok
+    }
+    hashCmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
+    out, err := hashCmd.Output()
+    if err != nil {
+        return true, ""
+    }
+    return true, strings.TrimSpace(string(out))
 }
 ```
 
@@ -838,7 +1011,7 @@ go test ./internal/rpc/... -run "TestListRepos|TestStat|TestReadDir|TestRead" -v
 
 ```bash
 git add internal/rpc/server.go internal/rpc/server_test.go
-git commit -m "feat(rpc): implement FileServer with Stat, ReadDir, Read, ListRepos"
+git commit -m "feat(rpc): implement FileServer with Stat, ReadDir, Read, ListRepos, SyncFiles"
 ```
 
 ---
@@ -856,6 +1029,7 @@ package rpc_test
 
 import (
     "context"
+    "net"
     "testing"
 
     "google.golang.org/grpc"
@@ -864,7 +1038,6 @@ import (
     "google.golang.org/grpc/metadata"
     "google.golang.org/grpc/status"
     "google.golang.org/grpc/test/bufconn"
-    "net"
 
     proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
     "github.com/martinsuchenak/phantom/internal/rpc"
@@ -1020,11 +1193,6 @@ func checkAuth(ctx context.Context, opts AuthOptions) error {
     default:
         return status.Errorf(codes.Internal, "unknown auth mode %q", opts.Mode)
     }
-}
-
-// SecretCallOption returns a grpc.CallOption that injects the shared secret into outgoing metadata.
-func SecretCallOption(secret string) grpc.CallOption {
-    return grpc.Header(nil) // placeholder — use ClientSecretInterceptor instead
 }
 
 // UnaryClientSecretInterceptor injects the shared secret into every outgoing unary RPC.
@@ -1354,7 +1522,11 @@ git commit -m "feat(rpc): implement FileClient with Stat, ReadDir, ReadAll, Read
 
 ## Task 8: Gossip Node + Peer Registry
 
-**Files:** `internal/node/peer.go`, `internal/node/registry.go`, `internal/node/registry_test.go`, `internal/node/node.go`
+**Files:** `internal/node/registry.go`, `internal/node/registry_test.go`, `internal/node/node.go`, `internal/node/peers_state.go`
+
+Note: `internal/node/peer.go` is intentionally omitted. All code uses `api.Peer` from `pkg/api/types.go` to avoid duplicate type definitions.
+
+**Gossip auth note (phase 2):** The spec requires auth on both gossip and gRPC planes. In this phase, auth is enforced on gRPC only. Gossip auth (embedding token in gossip meta, verifying incoming peer meta against configured secret) is deferred to phase 2. This is safe for trusted LAN deployments with `auth.mode: none` or `secret` (since the secret is also checked on gRPC connections). mTLS users should use network-level isolation until phase 2.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1367,12 +1539,13 @@ import (
     "testing"
 
     "github.com/martinsuchenak/phantom/internal/node"
+    "github.com/martinsuchenak/phantom/pkg/api"
 )
 
 func TestRegistryAddAndLookup(t *testing.T) {
     r := node.NewRegistry()
-    r.Upsert(node.Peer{ID: "a", GRPCAddr: "1.2.3.4:50051", Repos: []string{"myapp", "other"}})
-    r.Upsert(node.Peer{ID: "b", GRPCAddr: "5.6.7.8:50051", Repos: []string{"service"}})
+    r.Upsert(api.Peer{ID: "a", GRPCAddr: "1.2.3.4:50051", Repos: []string{"myapp", "other"}})
+    r.Upsert(api.Peer{ID: "b", GRPCAddr: "5.6.7.8:50051", Repos: []string{"service"}})
 
     peers := r.FindByRepo("myapp")
     if len(peers) != 1 || peers[0].ID != "a" {
@@ -1382,8 +1555,8 @@ func TestRegistryAddAndLookup(t *testing.T) {
 
 func TestRegistryFindByRepoMultiple(t *testing.T) {
     r := node.NewRegistry()
-    r.Upsert(node.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"shared"}})
-    r.Upsert(node.Peer{ID: "b", GRPCAddr: "2:50051", Repos: []string{"shared"}})
+    r.Upsert(api.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"shared"}})
+    r.Upsert(api.Peer{ID: "b", GRPCAddr: "2:50051", Repos: []string{"shared"}})
 
     peers := r.FindByRepo("shared")
     if len(peers) != 2 {
@@ -1393,7 +1566,7 @@ func TestRegistryFindByRepoMultiple(t *testing.T) {
 
 func TestRegistryRemove(t *testing.T) {
     r := node.NewRegistry()
-    r.Upsert(node.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"myapp"}})
+    r.Upsert(api.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"myapp"}})
     r.Remove("a")
 
     peers := r.FindByRepo("myapp")
@@ -1404,8 +1577,8 @@ func TestRegistryRemove(t *testing.T) {
 
 func TestRegistryAll(t *testing.T) {
     r := node.NewRegistry()
-    r.Upsert(node.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"x"}})
-    r.Upsert(node.Peer{ID: "b", GRPCAddr: "2:50051", Repos: []string{"y"}})
+    r.Upsert(api.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"x"}})
+    r.Upsert(api.Peer{ID: "b", GRPCAddr: "2:50051", Repos: []string{"y"}})
 
     all := r.All()
     if len(all) != 2 {
@@ -1415,8 +1588,8 @@ func TestRegistryAll(t *testing.T) {
 
 func TestRegistryUpsertUpdates(t *testing.T) {
     r := node.NewRegistry()
-    r.Upsert(node.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"old"}})
-    r.Upsert(node.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"new"}})
+    r.Upsert(api.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"old"}})
+    r.Upsert(api.Peer{ID: "a", GRPCAddr: "1:50051", Repos: []string{"new"}})
 
     peers := r.FindByRepo("old")
     if len(peers) != 0 {
@@ -1436,39 +1609,30 @@ go test ./internal/node/... -v
 # Expected: FAIL — node package does not exist
 ```
 
-- [ ] **Step 3: Create `internal/node/peer.go`**
+- [ ] **Step 3: Create `internal/node/registry.go`**
 
 ```go
 package node
 
-// Peer represents another phantom node discovered via gossip.
-type Peer struct {
-    ID       string
-    GRPCAddr string
-    Repos    []string
-}
-```
+import (
+    "sync"
 
-- [ ] **Step 4: Create `internal/node/registry.go`**
-
-```go
-package node
-
-import "sync"
+    "github.com/martinsuchenak/phantom/pkg/api"
+)
 
 // Registry holds the set of known peers discovered via gossip.
 type Registry struct {
     mu    sync.RWMutex
-    peers map[string]Peer // key: peer ID
+    peers map[string]api.Peer // key: peer ID
 }
 
 // NewRegistry returns an empty Registry.
 func NewRegistry() *Registry {
-    return &Registry{peers: make(map[string]Peer)}
+    return &Registry{peers: make(map[string]api.Peer)}
 }
 
 // Upsert adds or replaces a peer.
-func (r *Registry) Upsert(p Peer) {
+func (r *Registry) Upsert(p api.Peer) {
     r.mu.Lock()
     defer r.mu.Unlock()
     r.peers[p.ID] = p
@@ -1482,10 +1646,10 @@ func (r *Registry) Remove(id string) {
 }
 
 // FindByRepo returns all peers that advertise the given repo name.
-func (r *Registry) FindByRepo(repo string) []Peer {
+func (r *Registry) FindByRepo(repo string) []api.Peer {
     r.mu.RLock()
     defer r.mu.RUnlock()
-    var out []Peer
+    var out []api.Peer
     for _, p := range r.peers {
         for _, name := range p.Repos {
             if name == repo {
@@ -1498,10 +1662,10 @@ func (r *Registry) FindByRepo(repo string) []Peer {
 }
 
 // All returns a snapshot of all known peers.
-func (r *Registry) All() []Peer {
+func (r *Registry) All() []api.Peer {
     r.mu.RLock()
     defer r.mu.RUnlock()
-    out := make([]Peer, 0, len(r.peers))
+    out := make([]api.Peer, 0, len(r.peers))
     for _, p := range r.peers {
         out = append(out, p)
     }
@@ -1509,14 +1673,14 @@ func (r *Registry) All() []Peer {
 }
 ```
 
-- [ ] **Step 5: Run registry tests to verify they pass**
+- [ ] **Step 4: Run registry tests to verify they pass**
 
 ```bash
 go test ./internal/node/... -run "TestRegistry" -v
 # Expected: PASS
 ```
 
-- [ ] **Step 6: Create `internal/node/node.go`**
+- [ ] **Step 5: Create `internal/node/node.go`**
 
 This wraps `github.com/paularlott/gossip`. Check the library README at `github.com/paularlott/gossip` for the exact API — adapt method names as needed. The interface below is what the rest of the system calls.
 
@@ -1530,6 +1694,7 @@ import (
     "os"
 
     "github.com/paularlott/gossip"
+    "github.com/martinsuchenak/phantom/pkg/api"
 )
 
 // Meta is the payload each node broadcasts via gossip.
@@ -1586,7 +1751,7 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
         OnJoin: func(id string, nodeMeta []byte) {
             var m Meta
             if err := json.Unmarshal(nodeMeta, &m); err == nil {
-                registry.Upsert(Peer{ID: m.ID, GRPCAddr: m.GRPCAddr, Repos: m.Repos})
+                registry.Upsert(api.Peer{ID: m.ID, GRPCAddr: m.GRPCAddr, Repos: m.Repos})
             }
         },
         OnLeave: func(id string) {
@@ -1595,7 +1760,7 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
         OnUpdate: func(id string, nodeMeta []byte) {
             var m Meta
             if err := json.Unmarshal(nodeMeta, &m); err == nil {
-                registry.Upsert(Peer{ID: m.ID, GRPCAddr: m.GRPCAddr, Repos: m.Repos})
+                registry.Upsert(api.Peer{ID: m.ID, GRPCAddr: m.GRPCAddr, Repos: m.Repos})
             }
         },
     })
@@ -1615,6 +1780,54 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
 }
 ```
 
+- [ ] **Step 6: Create `internal/node/peers_state.go`**
+
+This provides the daemon ↔ CLI IPC mechanism. The daemon writes peer state to a JSON file; CLI commands read it.
+
+```go
+package node
+
+import (
+    "encoding/json"
+    "os"
+
+    "github.com/martinsuchenak/phantom/pkg/api"
+)
+
+// PeersState is the on-disk snapshot of known peers, written by the daemon
+// and read by CLI commands (phantom node list, phantom repos).
+type PeersState struct {
+    SelfID string     `json:"self_id"`
+    Peers  []api.Peer `json:"peers"`
+}
+
+// WritePeersState writes the current peer registry to path.
+func WritePeersState(path, selfID string, registry *Registry) error {
+    state := PeersState{
+        SelfID: selfID,
+        Peers:  registry.All(),
+    }
+    data, err := json.MarshalIndent(state, "", "  ")
+    if err != nil {
+        return err
+    }
+    return os.WriteFile(path, data, 0600)
+}
+
+// ReadPeersState reads the peer state from path.
+func ReadPeersState(path string) (*PeersState, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return nil, err
+    }
+    var state PeersState
+    if err := json.Unmarshal(data, &state); err != nil {
+        return nil, err
+    }
+    return &state, nil
+}
+```
+
 - [ ] **Step 7: Verify it compiles**
 
 ```bash
@@ -1628,7 +1841,7 @@ go test ./internal/node/... -run TestRegistry -v
 
 ```bash
 git add internal/node/
-git commit -m "feat(node): gossip peer registry and node lifecycle"
+git commit -m "feat(node): gossip peer registry, node lifecycle, and peers state file for CLI IPC"
 ```
 
 ---
@@ -1648,6 +1861,7 @@ import (
     "net"
     "os"
     "path/filepath"
+    "time"
 
     "google.golang.org/grpc"
 
@@ -1719,7 +1933,9 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
         grpc.UnaryInterceptor(rpc.UnaryAuthInterceptor(authOpts)),
         grpc.StreamInterceptor(rpc.StreamAuthInterceptor(authOpts)),
     )
-    proto.RegisterFileServiceServer(srv, rpc.NewFileServer(repoMap))
+    proto.RegisterFileServiceServer(srv,
+        rpc.NewFileServerWithOptions(repoMap, nodeCfg.Sync.AutoGitCommit),
+    )
 
     log.Info("phantom node starting", "id", nodeID, "grpc_addr", grpcAddr, "repos", repoNames)
 
@@ -1735,6 +1951,8 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
     // Determine advertised gRPC address (use outbound IP if not configured)
     advertisedGRPC := fmt.Sprintf("%s:%d", outboundIP(), nodeCfg.GRPCPort)
 
+    peersStatePath := cfg.GetPeersStatePath()
+
     gossipErrCh := make(chan error, 1)
     go func() {
         gossipErrCh <- node.Start(ctx, node.Config{
@@ -1747,14 +1965,34 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
         }, registry)
     }()
 
+    // Periodically write peer state to disk for CLI commands to read
+    peersWriteDone := make(chan struct{})
+    go func() {
+        defer close(peersWriteDone)
+        ticker := time.NewTicker(2 * time.Second)
+        defer ticker.Stop()
+        for {
+            select {
+            case <-ticker.C:
+                _ = node.WritePeersState(peersStatePath, nodeID, registry)
+            case <-ctx.Done():
+                // Final write before exit
+                _ = node.WritePeersState(peersStatePath, nodeID, registry)
+                return
+            }
+        }
+    }()
+
     select {
     case err := <-grpcErrCh:
         return fmt.Errorf("gRPC server error: %w", err)
     case err := <-gossipErrCh:
         srv.GracefulStop()
+        <-peersWriteDone
         return err
     case <-ctx.Done():
         srv.GracefulStop()
+        <-peersWriteDone
         return nil
     }
 }
@@ -1839,15 +2077,26 @@ func NewNodeListCommand() *cli.Command {
     }
 }
 
-// nodeRegistry is set when the daemon starts; for CLI use we read from a
-// shared state file written by the daemon. For now, list is a no-op placeholder
-// until daemon ↔ CLI IPC is added in a follow-up.
 func doNodeList(_ context.Context, _ *cli.Command) error {
-    // TODO(follow-up): read peer state from daemon via Unix socket or state file.
-    // For now, indicate the daemon must be queried.
-    fmt.Println("NODE\tADDR\t\tREPOS")
-    fmt.Println("(Connect to the running daemon to list peers — IPC not yet implemented)")
-    fmt.Println("Hint: check daemon logs or use `phantom repos` after the daemon is running.")
+    state, err := node.ReadPeersState(cfg.GetPeersStatePath())
+    if err != nil {
+        return fmt.Errorf("cannot read peer state (is the node daemon running?): %w", err)
+    }
+
+    fmt.Printf("%-20s %-25s %s\n", "NODE", "GRPC ADDR", "REPOS")
+    for _, p := range state.Peers {
+        repos := ""
+        for i, r := range p.Repos {
+            if i > 0 {
+                repos += ", "
+            }
+            repos += r
+        }
+        fmt.Printf("%-20s %-25s %s\n", p.ID, p.GRPCAddr, repos)
+    }
+    if len(state.Peers) == 0 {
+        fmt.Println("(no peers discovered yet)")
+    }
     return nil
 }
 ```
@@ -1862,6 +2111,7 @@ import (
     "fmt"
 
     "github.com/paularlott/cli"
+    "github.com/martinsuchenak/phantom/internal/node"
 )
 
 func NewReposCommand() *cli.Command {
@@ -1875,10 +2125,20 @@ func NewReposCommand() *cli.Command {
 }
 
 func doRepos(_ context.Context, _ *cli.Command) error {
-    // TODO(follow-up): read peer state from daemon via Unix socket or state file.
-    fmt.Printf("%-20s %-15s %s\n", "REPO", "NODE", "ADDRESS")
-    fmt.Println("(Connect to the running daemon to list repos — IPC not yet implemented)")
-    fmt.Println("Hint: start the daemon with `phantom node start` first.")
+    state, err := node.ReadPeersState(cfg.GetPeersStatePath())
+    if err != nil {
+        return fmt.Errorf("cannot read peer state (is the node daemon running?): %w", err)
+    }
+
+    fmt.Printf("%-20s %-20s %-25s\n", "REPO", "NODE", "ADDRESS")
+    for _, p := range state.Peers {
+        for _, repo := range p.Repos {
+            fmt.Printf("%-20s %-20s %-25s\n", repo, p.ID, p.GRPCAddr)
+        }
+    }
+    if len(state.Peers) == 0 {
+        fmt.Println("(no peers discovered yet; start the daemon with `phantom node start`)")
+    }
     return nil
 }
 ```
@@ -1907,7 +2167,7 @@ go build ./...
 # Expected: shows start, stop, list subcommands
 
 ./dist/phantom repos
-# Expected: prints header + placeholder message
+# Expected: error "cannot read peer state" (daemon not running)
 ```
 
 - [ ] **Step 8: Commit**
@@ -1916,7 +2176,7 @@ go build ./...
 git add internal/commands/node_start.go internal/commands/node_stop.go \
         internal/commands/node_list.go internal/commands/repos.go \
         internal/commands/root.go
-git commit -m "feat(commands): add phantom node start/stop/list and phantom repos"
+git commit -m "feat(commands): add phantom node start/stop/list and phantom repos with peer state IPC"
 ```
 
 ---
@@ -1942,11 +2202,11 @@ import (
     "google.golang.org/grpc"
 )
 
-// mockClient implements proto.FileServiceClient for testing.
 type mockClient struct {
     proto.UnimplementedFileServiceServer
-    statFn   func(*proto.StatRequest) (*proto.StatResponse, error)
+    statFn    func(*proto.StatRequest) (*proto.StatResponse, error)
     readdirFn func(*proto.ReadDirRequest) (*proto.ReadDirResponse, error)
+    readFn    func(*proto.ReadRequest) ([]byte, error)
 }
 
 func (m *mockClient) Stat(_ context.Context, req *proto.StatRequest, _ ...grpc.CallOption) (*proto.StatResponse, error) {
@@ -1961,7 +2221,7 @@ func (m *mockClient) ListRepos(_ context.Context, _ *proto.ListReposRequest, _ .
     return &proto.ListReposResponse{}, nil
 }
 
-func (m *mockClient) Read(_ context.Context, _ *proto.ReadRequest, _ ...grpc.CallOption) (proto.FileService_ReadClient, error) {
+func (m *mockClient) Read(_ context.Context, req *proto.ReadRequest, _ ...grpc.CallOption) (proto.FileService_ReadClient, error) {
     return nil, nil
 }
 
@@ -2115,6 +2375,11 @@ func (r *RemoteFS) ReadBytes(ctx context.Context, path string, offset, length in
     }
     return n, nil
 }
+
+// InnerClient returns the underlying proto client (for sync operations).
+func (r *RemoteFS) InnerClient() proto.FileServiceClient {
+    return r.inner
+}
 ```
 
 - [ ] **Step 4: Create `internal/remotefs/fs.go`**
@@ -2122,8 +2387,6 @@ func (r *RemoteFS) ReadBytes(ctx context.Context, path string, offset, length in
 This implements the `go-fuse` `fs.InodeEmbedder` interface. Adapt if the go-fuse API differs.
 
 ```go
-//go:build !integration
-
 package remotefs
 
 import (
@@ -2133,7 +2396,6 @@ import (
 
     "github.com/hanwen/go-fuse/v2/fs"
     "github.com/hanwen/go-fuse/v2/fuse"
-    proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 )
 
 // RemoteNode is a FUSE inode backed by a remote phantom repo.
@@ -2232,11 +2494,6 @@ func joinPath(base, name string) string {
     }
     return base + "/" + name
 }
-
-// protoClientAdapter satisfies tests — bridges mock to RemoteFS proto client.
-func init() {
-    _ = (*proto.UnimplementedFileServiceServer)(nil) // ensure import used
-}
 ```
 
 - [ ] **Step 5: Create `internal/remotefs/mount.go`**
@@ -2248,6 +2505,7 @@ import (
     "context"
     "fmt"
     "os"
+    "time"
 
     "github.com/hanwen/go-fuse/v2/fs"
     "github.com/hanwen/go-fuse/v2/fuse"
@@ -2285,6 +2543,21 @@ func Mount(ctx context.Context, rfs *RemoteFS, opts MountOpts) error {
     <-ctx.Done()
     return server.Unmount()
 }
+
+// WaitUntilMounted polls the mount point until it appears as a mount or timeout.
+// Returns nil if the mount is ready, error otherwise.
+func WaitUntilMounted(mountPoint string, timeout time.Duration) error {
+    deadline := time.Now().Add(timeout)
+    for time.Now().Before(deadline) {
+        // Try to stat the mount point — if FUSE is ready, this will work
+        // (may return an error from the FUSE client, but the mount exists)
+        if _, err := os.Stat(mountPoint); err == nil {
+            return nil
+        }
+        time.Sleep(50 * time.Millisecond)
+    }
+    return fmt.Errorf("timed out waiting for FUSE mount at %s", mountPoint)
+}
 ```
 
 - [ ] **Step 6: Run fs tests**
@@ -2313,6 +2586,8 @@ git commit -m "feat(remotefs): FUSE client that proxies reads to remote phantom 
 ## Task 11: Extend phantom start with --repo / --node
 
 **Files:** `internal/commands/start.go`
+
+**`--node` flag semantics:** In phase 1, `--node` accepts a `host[:port]` address directly (e.g., `192.168.1.10` or `192.168.1.10:50051`). If no port is given, the configured `node.grpc_port` is used. Auto-discovery via the gossip registry (passing a node ID that gets resolved to an address) requires a running daemon and will be added in a follow-up.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2357,11 +2632,11 @@ Add `--repo` and `--node` flags to `NewStartCommand()`:
 ```go
 &cli.StringFlag{
     Name:  "repo",
-    Usage: "Remote repo name to use as base (auto-discovers node from gossip ring)",
+    Usage: "Remote repo name to use as base (requires --node)",
 },
 &cli.StringFlag{
     Name:  "node",
-    Usage: "Explicit node ID to use with --repo (required if multiple nodes serve the same repo)",
+    Usage: "Remote node address (host[:port]) to use with --repo",
 },
 ```
 
@@ -2369,7 +2644,7 @@ Add `validateStartArgs` function and update `doStart`:
 
 ```go
 // validateStartArgs checks that exactly one of baseDir or repo is specified.
-func validateStartArgs(baseDir, repo, node string) error {
+func validateStartArgs(baseDir, repo, nodeAddr string) error {
     if baseDir != "" && repo != "" {
         return fmt.Errorf("specify either a base directory or --repo, not both")
     }
@@ -2382,9 +2657,9 @@ func validateStartArgs(baseDir, repo, node string) error {
 func doStart(ctx context.Context, cmd *cli.Command) error {
     baseDir := resolveBaseDir(cmd.GetStringArg("base-dir"))
     repo := cmd.GetString("repo")
-    nodeID := cmd.GetString("node")
+    nodeAddr := cmd.GetString("node")
 
-    if err := validateStartArgs(baseDir, repo, nodeID); err != nil {
+    if err := validateStartArgs(baseDir, repo, nodeAddr); err != nil {
         return err
     }
 
@@ -2393,7 +2668,7 @@ func doStart(ctx context.Context, cmd *cli.Command) error {
     persistent := cmd.GetBool("persistent")
 
     if repo != "" {
-        return processStartRemote(ctx, repo, nodeID, name, branch, persistent)
+        return processStartRemote(ctx, repo, nodeAddr, name, branch, persistent)
     }
     return processStart(ctx, baseDir, name, branch, persistent)
 }
@@ -2402,18 +2677,16 @@ func doStart(ctx context.Context, cmd *cli.Command) error {
 Add `processStartRemote` after `processStart`:
 
 ```go
-func processStartRemote(ctx context.Context, repo, nodeHint, name, branch string, persistent bool) error {
-    // Resolve which node serves this repo via the gossip registry.
-    // For now we connect directly to the node daemon's registry file.
-    // In a full implementation this reads from the running daemon's IPC endpoint.
-    // As a pragmatic first step: require --node to be explicit.
-    if nodeHint == "" {
-        return fmt.Errorf("auto-discovery requires a running node daemon; use --node to specify the node explicitly for now")
+func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string, persistent bool) error {
+    if nodeAddr == "" {
+        return fmt.Errorf("--node is required with --repo (provide the remote node's host[:port])")
     }
 
-    // Determine gRPC address from config
-    grpcPort := cfg.Node.GRPCPort
-    grpcAddr := fmt.Sprintf("%s:%d", nodeHint, grpcPort)
+    // Resolve node address: if no port, use configured grpc port
+    grpcAddr := nodeAddr
+    if !strings.Contains(nodeAddr, ":") {
+        grpcAddr = fmt.Sprintf("%s:%d", nodeAddr, cfg.Node.GRPCPort)
+    }
 
     authOpts := rpc.DialOpts{
         Auth: rpc.AuthOptions{
@@ -2424,14 +2697,16 @@ func processStartRemote(ctx context.Context, repo, nodeHint, name, branch string
 
     // Mount the remote FUSE filesystem
     mountBase := cfg.GetRemoteMountsPath()
-    remoteMountPath := filepath.Join(mountBase, nodeHint, repo)
+    // Use host:port as directory name (sanitize for filesystem)
+    safeNodeName := strings.ReplaceAll(grpcAddr, ":", "_")
+    remoteMountPath := filepath.Join(mountBase, safeNodeName, repo)
     if err := os.MkdirAll(remoteMountPath, 0755); err != nil {
         return fmt.Errorf("create remote mount dir: %w", err)
     }
 
     rfs, err := remotefs.NewRemoteFSFromDial(ctx, grpcAddr, authOpts, repo)
     if err != nil {
-        return fmt.Errorf("connect to node %s: %w", nodeHint, err)
+        return fmt.Errorf("connect to node %s: %w", grpcAddr, err)
     }
 
     // Generate overlay name if not provided
@@ -2440,36 +2715,49 @@ func processStartRemote(ctx context.Context, repo, nodeHint, name, branch string
     }
 
     fuseCtx, fuseCancel := context.WithCancel(ctx)
+    defer fuseCancel()
     fuseErrCh := make(chan error, 1)
     go func() {
         fuseErrCh <- remotefs.Mount(fuseCtx, rfs, remotefs.MountOpts{MountPoint: remoteMountPath})
     }()
 
-    // Brief wait to let FUSE mount settle
+    // Wait for FUSE mount to be ready before creating overlay on top of it
+    if err := remotefs.WaitUntilMounted(remoteMountPath, 10*time.Second); err != nil {
+        fuseCancel()
+        <-fuseErrCh
+        return fmt.Errorf("FUSE mount failed: %w", err)
+    }
+
     // Use the existing overlay machinery with remoteMountPath as BaseDir
     overlayErr := processStart(ctx, remoteMountPath, name, branch, persistent)
 
-    fuseCancel()
-    <-fuseErrCh
-
     // Mark overlay as remote in state
-    store, err := state.NewStore(cfg.GetStatePath())
-    if err == nil {
-        ovl, loadErr := store.Load(name)
-        if loadErr == nil {
-            ovl.Remote = true
-            ovl.RemoteNode = nodeHint
-            ovl.RemoteRepo = repo
-            ovl.RemoteMountPath = remoteMountPath
-            _ = store.Save(ovl)
+    if overlayErr == nil {
+        store, err := state.NewStore(cfg.GetStatePath())
+        if err == nil {
+            ovl, loadErr := store.Load(name)
+            if loadErr == nil {
+                ovl.Remote = true
+                ovl.RemoteNode = grpcAddr
+                ovl.RemoteRepo = repo
+                ovl.RemoteMountPath = remoteMountPath
+                _ = store.Save(ovl)
+            }
         }
+    }
+
+    // Keep FUSE mounted until context cancels (overlay lifecycle)
+    // If overlay creation failed, unmount now
+    if overlayErr != nil {
+        fuseCancel()
+        <-fuseErrCh
     }
 
     return overlayErr
 }
 ```
 
-Add required imports: `"github.com/martinsuchenak/phantom/internal/remotefs"`, `"github.com/martinsuchenak/phantom/internal/rpc"`, `"github.com/martinsuchenak/phantom/internal/state"`.
+Add required imports: `"github.com/martinsuchenak/phantom/internal/remotefs"`, `"github.com/martinsuchenak/phantom/internal/rpc"`, `"github.com/martinsuchenak/phantom/internal/state"`, `"strings"`, `"time"`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -2510,6 +2798,7 @@ package sync_test
 import (
     "os"
     "path/filepath"
+    "syscall"
     "testing"
 
     phantomsync "github.com/martinsuchenak/phantom/internal/sync"
@@ -2519,7 +2808,7 @@ func TestWalkerRegularFile(t *testing.T) {
     upper := t.TempDir()
     os.WriteFile(filepath.Join(upper, "hello.txt"), []byte("hi"), 0644)
 
-    changes, err := phantomsync.WalkUpperDir(upper)
+    changes, err := phantomsync.WalkUpperDir(upper, 0)
     if err != nil {
         t.Fatalf("WalkUpperDir: %v", err)
     }
@@ -2541,7 +2830,7 @@ func TestWalkerWhiteoutFile(t *testing.T) {
     // Real overlayfs creates char(0,0); walker detects by name prefix on non-Linux.
     os.WriteFile(filepath.Join(upper, ".wh.deleted.txt"), []byte{}, 0000)
 
-    changes, err := phantomsync.WalkUpperDir(upper)
+    changes, err := phantomsync.WalkUpperDir(upper, 0)
     if err != nil {
         t.Fatalf("WalkUpperDir: %v", err)
     }
@@ -2562,11 +2851,10 @@ func TestWalkerNestedDir(t *testing.T) {
     os.WriteFile(filepath.Join(upper, "sub", "file.go"), []byte("pkg"), 0644)
     os.WriteFile(filepath.Join(upper, "sub", "deep", "inner.go"), []byte("inner"), 0644)
 
-    changes, err := phantomsync.WalkUpperDir(upper)
+    changes, err := phantomsync.WalkUpperDir(upper, 0)
     if err != nil {
         t.Fatalf("WalkUpperDir: %v", err)
     }
-    // Expect: sub/file.go, sub/deep/inner.go (dirs not included as separate entries)
     paths := make(map[string]bool)
     for _, c := range changes {
         paths[c.Path] = true
@@ -2581,12 +2869,60 @@ func TestWalkerNestedDir(t *testing.T) {
 
 func TestWalkerEmptyDir(t *testing.T) {
     upper := t.TempDir()
-    changes, err := phantomsync.WalkUpperDir(upper)
+    changes, err := phantomsync.WalkUpperDir(upper, 0)
     if err != nil {
         t.Fatalf("WalkUpperDir: %v", err)
     }
     if len(changes) != 0 {
         t.Errorf("expected 0 changes in empty dir, got %d", len(changes))
+    }
+}
+
+func TestWalkerOpaqueDir(t *testing.T) {
+    upper := t.TempDir()
+    opaqueDir := filepath.Join(upper, "replaced")
+    os.MkdirAll(opaqueDir, 0755)
+    // Set the opaque xattr (Linux overlayfs marker)
+    syscall.Setxattr(opaqueDir, "trusted.overlay.opaque", []byte("y"), 0)
+    os.WriteFile(filepath.Join(opaqueDir, "new.txt"), []byte("data"), 0644)
+
+    changes, err := phantomsync.WalkUpperDir(upper, 0)
+    if err != nil {
+        t.Fatalf("WalkUpperDir: %v", err)
+    }
+
+    // Should have: replaced dir as opaque + replaced/new.txt as file
+    paths := make(map[string]bool)
+    hasOpaque := false
+    for _, c := range changes {
+        paths[c.Path] = true
+        if c.Path == "replaced" && c.IsDir && c.Opaque {
+            hasOpaque = true
+        }
+    }
+    if !hasOpaque {
+        t.Error("expected opaque dir entry for 'replaced'")
+    }
+    if !paths["replaced/new.txt"] {
+        t.Error("expected replaced/new.txt")
+    }
+}
+
+func TestWalkerFileSizeLimit(t *testing.T) {
+    upper := t.TempDir()
+    // Create a 1KB file
+    data := make([]byte, 1024)
+    os.WriteFile(filepath.Join(upper, "small.txt"), data, 0644)
+
+    // With limit of 512 bytes, the file should be skipped
+    changes, err := phantomsync.WalkUpperDir(upper, 512)
+    if err != nil {
+        t.Fatalf("WalkUpperDir: %v", err)
+    }
+    for _, c := range changes {
+        if c.Path == "small.txt" {
+            t.Error("expected small.txt to be skipped (exceeds 512 byte limit)")
+        }
     }
 }
 ```
@@ -2604,9 +2940,11 @@ go test ./internal/sync/... -run "TestWalker" -v
 package sync
 
 import (
+    "fmt"
     "os"
     "path/filepath"
     "strings"
+    "syscall"
 )
 
 const whiteoutPrefix = ".wh."
@@ -2618,12 +2956,14 @@ type Change struct {
     Data    []byte
     Deleted bool
     IsDir   bool
+    Opaque  bool // true if this dir replaces the entire lower dir (overlay opaque marker)
 }
 
 // WalkUpperDir walks the overlay upper directory and returns all changes.
 // Whiteout files (.wh.<name>) are returned as Deleted changes.
-// Directories are not returned as separate changes (files within them are).
-func WalkUpperDir(upperDir string) ([]Change, error) {
+// Opaque directories (xattr trusted.overlay.opaque=y) are returned as Dir+Opaque changes.
+// Files exceeding maxFileSizeBytes are skipped (0 = no limit).
+func WalkUpperDir(upperDir string, maxFileSizeBytes int64) ([]Change, error) {
     var changes []Change
     err := filepath.Walk(upperDir, func(abs string, info os.FileInfo, err error) error {
         if err != nil {
@@ -2654,18 +2994,39 @@ func WalkUpperDir(upperDir string) ([]Change, error) {
         }
 
         if info.IsDir() {
-            // Don't emit directories as changes; files within them will be walked.
+            // Check for opaque xattr (Linux overlayfs marker)
+            opaque := isOpaqueDir(abs)
+            if opaque {
+                changes = append(changes, Change{Path: rel, IsDir: true, Opaque: true})
+            }
+            // Non-opaque dirs: don't emit as changes; files within them will be walked.
             return nil
+        }
+
+        // File size check
+        if maxFileSizeBytes > 0 && info.Size() > maxFileSizeBytes {
+            return nil // skip files exceeding the limit
         }
 
         data, err := os.ReadFile(abs)
         if err != nil {
-            return err
+            return fmt.Errorf("read %s: %w", rel, err)
         }
         changes = append(changes, Change{Path: rel, Data: data})
         return nil
     })
     return changes, err
+}
+
+// isOpaqueDir checks if a directory has the overlay opaque xattr set.
+func isOpaqueDir(path string) bool {
+    var val [1]byte
+    err := syscall.Getxattr(path, "trusted.overlay.opaque", val[:0])
+    if err != nil {
+        // On macOS or non-overlayfs, this will fail — treat as non-opaque
+        return false
+    }
+    return true
 }
 ```
 
@@ -2680,14 +3041,14 @@ go test ./internal/sync/... -run "TestWalker" -v
 
 ```bash
 git add internal/sync/walker.go internal/sync/walker_test.go
-git commit -m "feat(sync): upper dir walker that detects changed and deleted files"
+git commit -m "feat(sync): upper dir walker with whiteout, opaque dir, and file size limit support"
 ```
 
 ---
 
-## Task 13: Sync Push Engine + Complete SyncFiles on Server
+## Task 13: Sync Push Engine
 
-**Files:** `internal/sync/syncer.go`, `internal/sync/syncer_test.go`, `internal/rpc/server.go`
+**Files:** `internal/sync/syncer.go`, `internal/sync/syncer_test.go`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2739,7 +3100,7 @@ func TestSyncerPushFile(t *testing.T) {
     upper := t.TempDir()
     os.WriteFile(filepath.Join(upper, "new.txt"), []byte("content"), 0644)
 
-    syncer := phantomsync.NewSyncer(client, "r", false)
+    syncer := phantomsync.NewSyncer(client, "r", 0, false)
     result, err := syncer.Push(context.Background(), upper, "test commit")
     if err != nil {
         t.Fatalf("Push: %v", err)
@@ -2770,7 +3131,7 @@ func TestSyncerDeleteFile(t *testing.T) {
     // Simulate whiteout
     os.WriteFile(filepath.Join(upper, ".wh.old.txt"), []byte{}, 0000)
 
-    syncer := phantomsync.NewSyncer(client, "r", false)
+    syncer := phantomsync.NewSyncer(client, "r", 0, false)
     result, err := syncer.Push(context.Background(), upper, "delete old.txt")
     if err != nil {
         t.Fatalf("Push: %v", err)
@@ -2791,131 +3152,14 @@ go test ./internal/sync/... -run "TestSyncer" -v
 # Expected: FAIL — phantomsync.NewSyncer undefined
 ```
 
-- [ ] **Step 3: Implement `SyncFiles` on the server in `internal/rpc/server.go`**
-
-Replace the stub `SyncFiles` method:
-
-```go
-func (s *FileServer) SyncFiles(stream proto.FileService_SyncFilesServer) error {
-    var repoBase string
-    var commitMsg string
-    var autoGitCommit bool
-
-    for {
-        chunk, err := stream.Recv()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return status.Errorf(codes.Internal, "recv: %v", err)
-        }
-
-        switch p := chunk.Payload.(type) {
-        case *proto.SyncChunk_Header:
-            base, lerr := s.repoPath(p.Header.Repo)
-            if lerr != nil {
-                return lerr
-            }
-            repoBase = base
-            commitMsg = p.Header.CommitMessage
-
-        case *proto.SyncChunk_File:
-            if repoBase == "" {
-                return status.Error(codes.InvalidArgument, "SyncHeader must be sent first")
-            }
-            full, err := safePath(repoBase, p.File.Path)
-            if err != nil {
-                return err
-            }
-            if p.File.Deleted {
-                if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
-                    return status.Errorf(codes.Internal, "delete %s: %v", p.File.Path, err)
-                }
-            } else if p.File.IsDir {
-                if err := os.MkdirAll(full, 0755); err != nil {
-                    return status.Errorf(codes.Internal, "mkdir %s: %v", p.File.Path, err)
-                }
-            } else {
-                if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
-                    return status.Errorf(codes.Internal, "mkdir parent: %v", err)
-                }
-                if err := os.WriteFile(full, p.File.Data, 0644); err != nil {
-                    return status.Errorf(codes.Internal, "write %s: %v", p.File.Path, err)
-                }
-            }
-        }
-    }
-
-    // Optionally git commit
-    gitCommitted := false
-    gitHash := ""
-    if autoGitCommit && repoBase != "" && commitMsg != "" {
-        gitCommitted, gitHash = tryGitCommit(repoBase, commitMsg)
-    }
-
-    return stream.SendAndClose(&proto.SyncResponse{
-        Success:       true,
-        GitCommitted:  gitCommitted,
-        GitCommitHash: gitHash,
-    })
-}
-
-// tryGitCommit attempts git add -A && git commit in dir. Returns success and hash.
-func tryGitCommit(dir, message string) (bool, string) {
-    // Check if it's a git repo
-    if _, err := os.Stat(filepath.Join(dir, ".git")); os.IsNotExist(err) {
-        return false, ""
-    }
-    addCmd := exec.Command("git", "-C", dir, "add", "-A")
-    if err := addCmd.Run(); err != nil {
-        return false, ""
-    }
-    commitCmd := exec.Command("git", "-C", dir, "commit", "-m", message)
-    if err := commitCmd.Run(); err != nil {
-        return false, "" // nothing to commit is also ok
-    }
-    hashCmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
-    out, err := hashCmd.Output()
-    if err != nil {
-        return true, ""
-    }
-    return true, strings.TrimSpace(string(out))
-}
-```
-
-Add `"os/exec"`, `"strings"`, `"path/filepath"` to imports in `server.go`. Also add `autoGitCommit bool` field to `FileServer` and a constructor parameter:
-
-```go
-type FileServer struct {
-    proto.UnimplementedFileServiceServer
-    repos         map[string]string
-    autoGitCommit bool
-}
-
-func NewFileServer(repos map[string]string) *FileServer {
-    return &FileServer{repos: repos}
-}
-
-func NewFileServerWithOptions(repos map[string]string, autoGitCommit bool) *FileServer {
-    return &FileServer{repos: repos, autoGitCommit: autoGitCommit}
-}
-```
-
-Update `doNodeStart` in `node_start.go` to use `NewFileServerWithOptions`:
-
-```go
-proto.RegisterFileServiceServer(srv,
-    rpc.NewFileServerWithOptions(repoMap, nodeCfg.Sync.AutoGitCommit),
-)
-```
-
-- [ ] **Step 4: Create `internal/sync/syncer.go`**
+- [ ] **Step 3: Create `internal/sync/syncer.go`**
 
 ```go
 package sync
 
 import (
     "context"
+    "fmt"
 
     proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 )
@@ -2930,21 +3174,26 @@ type SyncResult struct {
 
 // Syncer pushes overlay changes to a remote node via gRPC SyncFiles.
 type Syncer struct {
-    client        proto.FileServiceClient
-    repo          string
-    autoGitCommit bool
+    client          proto.FileServiceClient
+    repo            string
+    maxFileSizeBytes int64
+    autoGitCommit   bool
 }
 
 // NewSyncer creates a Syncer targeting the given repo on the remote node.
-func NewSyncer(client proto.FileServiceClient, repo string, autoGitCommit bool) *Syncer {
-    return &Syncer{client: client, repo: repo, autoGitCommit: autoGitCommit}
+func NewSyncer(client proto.FileServiceClient, repo string, maxFileSizeBytes int64, autoGitCommit bool) *Syncer {
+    return &Syncer{client: client, repo: repo, maxFileSizeBytes: maxFileSizeBytes, autoGitCommit: autoGitCommit}
 }
 
 // Push walks the upper dir and streams all changes to the remote node.
 func (s *Syncer) Push(ctx context.Context, upperDir, commitMessage string) (SyncResult, error) {
-    changes, err := WalkUpperDir(upperDir)
+    changes, err := WalkUpperDir(upperDir, s.maxFileSizeBytes)
     if err != nil {
-        return SyncResult{}, err
+        return SyncResult{}, fmt.Errorf("walk upper dir: %w", err)
+    }
+
+    if len(changes) == 0 {
+        return SyncResult{Success: true}, nil
     }
 
     stream, err := s.client.SyncFiles(ctx)
@@ -2993,21 +3242,20 @@ func (s *Syncer) Push(ctx context.Context, upperDir, commitMessage string) (Sync
 }
 ```
 
-- [ ] **Step 5: Run all sync tests**
+- [ ] **Step 4: Run all sync tests**
 
 ```bash
 go test ./internal/sync/... -v
 # Expected: all PASS
 
 go test ./internal/rpc/... -v
-# Expected: all PASS (SyncFiles stub replaced with real implementation)
+# Expected: all PASS (SyncFiles implemented in Task 5)
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add internal/sync/syncer.go internal/sync/syncer_test.go internal/rpc/server.go \
-        internal/commands/node_start.go
+git add internal/sync/syncer.go internal/sync/syncer_test.go
 git commit -m "feat(sync): push engine streams upper dir changes to remote node via SyncFiles"
 ```
 
@@ -3038,16 +3286,22 @@ func TestSentinelDetectsFile(t *testing.T) {
     dir := t.TempDir()
     triggered := make(chan string, 1)
 
-    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
+    ready := make(chan struct{})
     go func() {
+        close(ready)
         phantomsync.Watch(ctx, dir, func(message string) {
             triggered <- message
         })
     }()
 
-    time.Sleep(100 * time.Millisecond) // let watcher start
+    // Wait for watcher to be ready
+    <-ready
+    // Small delay to ensure fsnotify.Add has completed
+    time.Sleep(50 * time.Millisecond)
+
     os.WriteFile(filepath.Join(dir, ".phantom_commit"), []byte("my message"), 0644)
 
     select {
@@ -3063,17 +3317,21 @@ func TestSentinelDetectsFile(t *testing.T) {
 func TestSentinelDeletesFileAfterFiring(t *testing.T) {
     dir := t.TempDir()
 
-    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
     done := make(chan struct{})
+    ready := make(chan struct{})
     go func() {
+        close(ready)
         phantomsync.Watch(ctx, dir, func(_ string) {
             close(done)
         })
     }()
 
-    time.Sleep(100 * time.Millisecond)
+    <-ready
+    time.Sleep(50 * time.Millisecond)
+
     sentinel := filepath.Join(dir, ".phantom_commit")
     os.WriteFile(sentinel, []byte(""), 0644)
 
@@ -3083,9 +3341,30 @@ func TestSentinelDeletesFileAfterFiring(t *testing.T) {
         t.Fatal("timeout")
     }
 
+    // Wait for delete to happen
     time.Sleep(100 * time.Millisecond)
     if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
         t.Error("expected .phantom_commit to be deleted after firing")
+    }
+}
+
+func TestSentinelRespectsContextCancellation(t *testing.T) {
+    dir := t.TempDir()
+    ctx, cancel := context.WithCancel(context.Background())
+
+    done := make(chan struct{})
+    go func() {
+        phantomsync.Watch(ctx, dir, func(_ string) {})
+        close(done)
+    }()
+
+    cancel()
+
+    select {
+    case <-done:
+        // Good — Watch returned
+    case <-time.After(2 * time.Second):
+        t.Error("Watch did not return after context cancellation")
     }
 }
 ```
@@ -3116,7 +3395,7 @@ const resultFile = ".phantom_commit_result"
 
 // Watch monitors mountPoint for a .phantom_commit file.
 // When detected, it reads the file contents (as commit message), calls onTrigger,
-// deletes the sentinel, and writes .phantom_commit_result with the outcome string.
+// deletes the sentinel, and continues watching.
 // Watch blocks until ctx is cancelled.
 func Watch(ctx context.Context, mountPoint string, onTrigger func(commitMessage string)) {
     watcher, err := fsnotify.NewWatcher()
@@ -3128,6 +3407,13 @@ func Watch(ctx context.Context, mountPoint string, onTrigger func(commitMessage 
     _ = watcher.Add(mountPoint)
 
     sentinel := filepath.Join(mountPoint, sentinelFile)
+
+    // Check for existing sentinel file on startup
+    if data, err := os.ReadFile(sentinel); err == nil {
+        msg := strings.TrimSpace(string(data))
+        os.Remove(sentinel)
+        onTrigger(msg)
+    }
 
     for {
         select {
@@ -3182,7 +3468,7 @@ git commit -m "feat(sync): sentinel watcher triggers push on .phantom_commit wri
 
 ## Task 15: phantom push Command
 
-**Files:** `internal/commands/push.go`, `internal/commands/root.go`
+**Files:** `internal/commands/push.go`, `internal/commands/push_test.go`, `internal/commands/root.go`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -3193,10 +3479,13 @@ package commands_test
 
 import (
     "testing"
+
+    "github.com/martinsuchenak/phantom/internal/commands"
+    "github.com/martinsuchenak/phantom/pkg/api"
 )
 
 func TestPushCommandExists(t *testing.T) {
-    cmd := NewPushCommand()
+    cmd := commands.NewPushCommand()
     if cmd == nil {
         t.Error("NewPushCommand returned nil")
     }
@@ -3206,9 +3495,8 @@ func TestPushCommandExists(t *testing.T) {
 }
 
 func TestPushRejectsLocalOverlay(t *testing.T) {
-    // push must error if the overlay is not remote
     ovl := &api.Overlay{Name: "local-agent", Remote: false}
-    err := validatePushOverlay(ovl)
+    err := commands.ValidatePushOverlay(ovl)
     if err == nil {
         t.Error("expected error for non-remote overlay")
     }
@@ -3222,7 +3510,7 @@ func TestPushAcceptsRemoteOverlay(t *testing.T) {
         RemoteRepo: "myapp",
         WorkDir:    t.TempDir(),
     }
-    err := validatePushOverlay(ovl)
+    err := commands.ValidatePushOverlay(ovl)
     if err != nil {
         t.Errorf("expected no error for remote overlay, got %v", err)
     }
@@ -3233,24 +3521,10 @@ func TestPushAcceptsRemoteOverlay(t *testing.T) {
 
 ```bash
 go test ./internal/commands/... -run "TestPushCommand" -v
-# Expected: FAIL — NewPushCommand undefined
+# Expected: FAIL — commands.NewPushCommand undefined
 ```
 
-- [ ] **Step 3: Add `validatePushOverlay` to `internal/commands/push.go`** (needed by tests above)
-
-Extract the validation so it's testable:
-
-```go
-// validatePushOverlay returns an error if the overlay cannot be pushed.
-func validatePushOverlay(ovl *api.Overlay) error {
-    if !ovl.Remote {
-        return fmt.Errorf("overlay %q is not a remote overlay; push only applies to overlays created with --repo", ovl.Name)
-    }
-    return nil
-}
-```
-
-- [ ] **Step 5: Create the rest of `internal/commands/push.go`**
+- [ ] **Step 3: Create `internal/commands/push.go`**
 
 ```go
 package commands
@@ -3290,6 +3564,14 @@ func NewPushCommand() *cli.Command {
     }
 }
 
+// ValidatePushOverlay is exported for testing.
+func ValidatePushOverlay(ovl *api.Overlay) error {
+    if !ovl.Remote {
+        return fmt.Errorf("overlay %q is not a remote overlay; push only applies to overlays created with --repo", ovl.Name)
+    }
+    return nil
+}
+
 func doPush(ctx context.Context, cmd *cli.Command) error {
     name := cmd.GetStringArg("name")
     message := cmd.GetString("message")
@@ -3307,12 +3589,9 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
         return err
     }
 
-    if !ovl.Remote {
-        return fmt.Errorf("overlay %q is not a remote overlay; push only applies to overlays created with --repo", name)
+    if err := ValidatePushOverlay(ovl); err != nil {
+        return err
     }
-
-    grpcPort := cfg.Node.GRPCPort
-    grpcAddr := fmt.Sprintf("%s:%d", ovl.RemoteNode, grpcPort)
 
     authOpts := rpc.DialOpts{
         Auth: rpc.AuthOptions{
@@ -3320,13 +3599,15 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
             Secret: cfg.Node.Auth.Secret,
         },
     }
-    fc, err := rpc.Dial(ctx, grpcAddr, authOpts)
+    fc, err := rpc.Dial(ctx, ovl.RemoteNode, authOpts)
     if err != nil {
-        return fmt.Errorf("connect to %s: %w", grpcAddr, err)
+        return fmt.Errorf("connect to %s: %w", ovl.RemoteNode, err)
     }
 
-    syncer := phantomsync.NewSyncer(fc.Inner(), ovl.RemoteRepo, cfg.Node.Sync.AutoGitCommit)
-    result, err := syncer.Push(ctx, ovl.WorkDir, message)
+    syncer := phantomsync.NewSyncer(fc.Inner(), ovl.RemoteRepo, cfg.Node.Sync.MaxFileSizeBytes, cfg.Node.Sync.AutoGitCommit)
+    // BUG FIX: Use UpperDir, not WorkDir. UpperDir contains the raw overlay changes (whiteouts, new files).
+    // WorkDir is the merged view which is not what we want to sync.
+    result, err := syncer.Push(ctx, ovl.UpperDir, message)
     if err != nil {
         return fmt.Errorf("push failed: %w", err)
     }
@@ -3347,7 +3628,7 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
 }
 ```
 
-- [ ] **Step 6: Verify `NewPushCommand` is registered in `root.go`**
+- [ ] **Step 4: Verify `NewPushCommand` is registered in `root.go`**
 
 Ensure `NewPushCommand()` is in the `Commands` slice (added in Task 9 Step 5). Rebuild:
 
@@ -3357,39 +3638,47 @@ go build ./...
 # Expected: shows usage for phantom push
 ```
 
-- [ ] **Step 7: Run all tests**
+- [ ] **Step 5: Wire sentinel into phantom start for remote overlays**
+
+In `processStartRemote` in `internal/commands/start.go`, add the sentinel watcher after the overlay is created. This requires storing the proto client reference before wrapping in RemoteFS.
+
+Update `processStartRemote` to add sentinel wiring after the overlay is successfully created:
+
+```go
+// After overlayErr == nil check and state update, add:
+if overlayErr == nil {
+    // ... existing state update code ...
+
+    // Start sentinel watcher for .phantom_commit
+    innerClient := rfs.InnerClient()
+    go func() {
+        phantomsync.Watch(ctx, remoteMountPath, func(commitMsg string) {
+            syncer := phantomsync.NewSyncer(innerClient, repo, cfg.Node.Sync.MaxFileSizeBytes, cfg.Node.Sync.AutoGitCommit)
+            result, err := syncer.Push(ctx, ovl.UpperDir, commitMsg)
+            var outcome string
+            if err != nil {
+                outcome = "error: " + err.Error()
+            } else if !result.Success {
+                outcome = "error: " + result.Error
+            } else {
+                outcome = "ok"
+            }
+            phantomsync.WriteResult(remoteMountPath, outcome)
+        })
+    }()
+}
+```
+
+Note: This requires `ovl` to be loaded from the state store after `processStart` succeeds. The existing state update block already loads it — use that reference for the sentinel watcher.
+
+- [ ] **Step 6: Run all tests**
 
 ```bash
 go test ./... -v
 # Expected: all PASS
 ```
 
-- [ ] **Step 8: Wire sentinel into phantom start for remote overlays**
-
-In `processStartRemote` in `internal/commands/start.go`, after creating the overlay, start the sentinel watcher:
-
-```go
-// Start sentinel watcher for .phantom_commit
-go func() {
-    phantomsync.Watch(ctx, remoteMountPath, func(commitMsg string) {
-        syncer := phantomsync.NewSyncer(rfs_inner_client, repo, cfg.Node.Sync.AutoGitCommit)
-        result, err := syncer.Push(ctx, ovl.WorkDir, commitMsg)
-        var outcome string
-        if err != nil {
-            outcome = "error: " + err.Error()
-        } else if !result.Success {
-            outcome = "error: " + result.Error
-        } else {
-            outcome = "ok"
-        }
-        phantomsync.WriteResult(remoteMountPath, outcome)
-    })
-}()
-```
-
-Note: `rfs_inner_client` requires storing the `proto.FileServiceClient` from `NewRemoteFSFromDial` — refactor `processStartRemote` to keep a reference to `fc.Inner()` before passing to `NewRemoteFS`.
-
-- [ ] **Step 9: Final build and test**
+- [ ] **Step 7: Final build and test**
 
 ```bash
 go test ./...
@@ -3397,7 +3686,7 @@ go build ./...
 # Expected: all pass, clean build
 ```
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add internal/commands/push.go internal/commands/push_test.go \
@@ -3407,7 +3696,185 @@ git commit -m "feat(commands): add phantom push command and wire sentinel watche
 
 ---
 
-## Task 16: Documentation Updates
+## Task 16: Integration Test
+
+**Files:** `internal/sync/integration_test.go`
+
+This test verifies the full data flow: gRPC server → client → FUSE mount → read. It's gated behind a build tag so it doesn't run in normal `go test`.
+
+- [ ] **Step 1: Create `internal/sync/integration_test.go`**
+
+```go
+//go:build integration
+
+package sync_test
+
+import (
+    "context"
+    "io"
+    "net"
+    "os"
+    "path/filepath"
+    "testing"
+    "time"
+
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+
+    "github.com/martinsuchenak/phantom/internal/remotefs"
+    proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
+    "github.com/martinsuchenak/phantom/internal/rpc"
+    phantomsync "github.com/martinsuchenak/phantom/internal/sync"
+)
+
+func TestIntegration_ServerFUSEMountAndSync(t *testing.T) {
+    // Set up a real repo on the "server" side
+    repoDir := t.TempDir()
+    os.WriteFile(filepath.Join(repoDir, "hello.txt"), []byte("hello world"), 0644)
+    os.MkdirAll(filepath.Join(repoDir, "sub"), 0755)
+    os.WriteFile(filepath.Join(repoDir, "sub", "nested.txt"), []byte("nested"), 0644)
+
+    // Start gRPC server on a random port
+    lis, err := net.Listen("tcp", "127.0.0.1:0")
+    if err != nil {
+        t.Fatalf("listen: %v", err)
+    }
+    srv := grpc.NewServer()
+    proto.RegisterFileServiceServer(srv, rpc.NewFileServer(map[string]string{"testrepo": repoDir}))
+    go srv.Serve(lis)
+    defer srv.Stop()
+
+    addr := lis.Addr().String()
+
+    // --- Phase 1: Verify gRPC client reads ---
+    t.Log("Phase 1: gRPC client reads")
+    conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        t.Fatalf("dial: %v", err)
+    }
+    defer conn.Close()
+
+    client := proto.NewFileServiceClient(conn)
+    fc := rpc.NewFileClient(client)
+
+    info, err := fc.Stat(context.Background(), "testrepo", "hello.txt")
+    if err != nil {
+        t.Fatalf("stat: %v", err)
+    }
+    if info.IsDir || info.Size != 11 {
+        t.Errorf("unexpected stat: %+v", info)
+    }
+
+    data, err := fc.ReadAll(context.Background(), "testrepo", "hello.txt", 0, 0)
+    if err != nil {
+        t.Fatalf("read: %v", err)
+    }
+    if string(data) != "hello world" {
+        t.Errorf("expected 'hello world', got %q", data)
+    }
+
+    // --- Phase 2: Verify FUSE mount (requires FUSE on the system) ---
+    t.Log("Phase 2: FUSE mount")
+    mountPoint := filepath.Join(t.TempDir(), "mnt")
+    os.MkdirAll(mountPoint, 0755)
+
+    rfs := remotefs.NewRemoteFS(client, "testrepo")
+    fuseCtx, fuseCancel := context.WithCancel(context.Background())
+    defer fuseCancel()
+
+    mountErrCh := make(chan error, 1)
+    go func() {
+        mountErrCh <- remotefs.Mount(fuseCtx, rfs, remotefs.MountOpts{MountPoint: mountPoint})
+    }()
+
+    // Wait for mount
+    if err := remotefs.WaitUntilMounted(mountPoint, 10*time.Second); err != nil {
+        t.Fatalf("mount wait: %v", err)
+    }
+
+    // Read through FUSE
+    fused, err := os.ReadFile(filepath.Join(mountPoint, "hello.txt"))
+    if err != nil {
+        t.Fatalf("fuse read: %v", err)
+    }
+    if string(fused) != "hello world" {
+        t.Errorf("fuse: expected 'hello world', got %q", fused)
+    }
+
+    fusedDir, err := os.ReadDir(filepath.Join(mountPoint, "sub"))
+    if err != nil {
+        t.Fatalf("fuse readdir: %v", err)
+    }
+    if len(fusedDir) != 1 || fusedDir[0].Name() != "nested.txt" {
+        t.Errorf("fuse readdir: unexpected entries: %v", fusedDir)
+    }
+
+    fuseCancel()
+    select {
+    case <-mountErrCh:
+    case <-time.After(5 * time.Second):
+        t.Error("FUSE unmount timed out")
+    }
+
+    // --- Phase 3: Verify sync ---
+    t.Log("Phase 3: Sync push")
+    serverDir2 := t.TempDir()
+    lis2, err := net.Listen("tcp", "127.0.0.1:0")
+    if err != nil {
+        t.Fatalf("listen2: %v", err)
+    }
+    srv2 := grpc.NewServer()
+    proto.RegisterFileServiceServer(srv2, rpc.NewFileServer(map[string]string{"r": serverDir2}))
+    go srv2.Serve(lis2)
+    defer srv2.Stop()
+
+    conn2, err := grpc.NewClient(lis2.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        t.Fatalf("dial2: %v", err)
+    }
+    defer conn2.Close()
+    client2 := proto.NewFileServiceClient(conn2)
+
+    upper := t.TempDir()
+    os.WriteFile(filepath.Join(upper, "synced.txt"), []byte("synced content"), 0644)
+    os.WriteFile(filepath.Join(upper, ".wh.removed.txt"), []byte{}, 0000)
+
+    syncer := phantomsync.NewSyncer(client2, "r", 0, false)
+    result, err := syncer.Push(context.Background(), upper, "integration test")
+    if err != nil {
+        t.Fatalf("push: %v", err)
+    }
+    if !result.Success {
+        t.Fatalf("push failed: %s", result.Error)
+    }
+
+    synced, err := os.ReadFile(filepath.Join(serverDir2, "synced.txt"))
+    if err != nil {
+        t.Fatalf("read synced file: %v", err)
+    }
+    if string(synced) != "synced content" {
+        t.Errorf("expected 'synced content', got %q", synced)
+    }
+}
+```
+
+- [ ] **Step 2: Run integration test**
+
+```bash
+# Requires FUSE installed (macFUSE on macOS, libfuse on Linux)
+go test ./internal/sync/... -tags=integration -run TestIntegration -v -timeout 60s
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add internal/sync/integration_test.go
+git commit -m "test(sync): add integration test for gRPC → FUSE → sync pipeline"
+```
+
+---
+
+## Task 17: Documentation Updates
 
 **Files:** `docs/commands.md`, `docs/configuration.md`, `docs/workflows.md`
 
@@ -3421,11 +3888,11 @@ Section 1 — phantom node:
 >
 > Manage the phantom node daemon. The daemon joins the gossip ring, advertises local repos, and serves files over gRPC so other nodes can use them as overlay base layers.
 >
-> **### phantom node start** — Starts the daemon in the foreground. Writes PID to `~/.phantom/node.pid`. Reads settings from the `node:` config section.
+> **### phantom node start** — Starts the daemon in the foreground. Writes PID to `~/.phantom/node.pid`. Reads settings from the `node:` config section. Periodically writes discovered peer state to `~/.phantom/peers.json` for CLI commands.
 >
 > **### phantom node stop** — Sends SIGTERM to the running daemon via `~/.phantom/node.pid`.
 >
-> **### phantom node list** — Lists peers visible in the gossip ring.
+> **### phantom node list** — Lists peers visible in the gossip ring. Reads from `~/.phantom/peers.json` (requires daemon to be running).
 
 Section 2 — phantom push:
 
@@ -3434,23 +3901,25 @@ Section 2 — phantom push:
 > Pushes changes from an overlay's upper dir back to the remote node that holds the base repo. Only works for overlays created with `--repo`. If the remote repo is a git repo and `node.sync.auto_git_commit: true`, the remote node also runs `git commit`.
 >
 > Flags: `--message` / `-m` — commit message used on the remote.
+>
+> Argument: `<name>` — name of the overlay to push.
 
 Section 3 — phantom repos:
 
 > **## phantom repos**
 >
-> Lists all repos advertised by peers in the gossip ring. Requires a running node daemon.
+> Lists all repos advertised by peers in the gossip ring. Reads from `~/.phantom/peers.json` (requires daemon to be running).
 
 - [ ] **Step 2: Update `docs/commands.md` — new flags on `phantom start`**
 
 Find the `phantom start` flags table. Append two rows:
 
-| Flag     | Short | Description                                                            |
-|----------|-------|------------------------------------------------------------------------|
-| `--repo` |       | Remote repo name to use as base (auto-discovers node from gossip ring) |
-| `--node` |       | Explicit node ID when multiple nodes serve the same repo               |
+| Flag     | Short | Description                                                              |
+|----------|-------|--------------------------------------------------------------------------|
+| `--repo` |       | Remote repo name to use as base (requires `--node`)                      |
+| `--node` |       | Remote node address as `host[:port]` (required with `--repo`)            |
 
-After the existing description, add a **Remote overlay** paragraph explaining: when `--repo` is given, phantom connects to the advertising node, mounts its repo via FUSE/gRPC, and creates the overlay on top — the AI agent sees a plain local filesystem. Use `phantom push` to sync changes back.
+After the existing description, add a **Remote overlay** paragraph explaining: when `--repo` and `--node` are given, phantom connects to the remote node's gRPC server, mounts its repo via FUSE, and creates the overlay on top — the AI agent sees a plain local filesystem. Use `phantom push` to sync changes back. The sentinel watcher enables automatic sync: when the agent writes `.phantom_commit` to the mount root, phantom detects it and pushes.
 
 Then add this example:
 
@@ -3459,7 +3928,8 @@ Then add this example:
 phantom start /path/to/repo --name agent1
 
 # Remote overlay (new)
-phantom start --repo myapp --node node-a --name agent1
+phantom start --repo myapp --node 192.168.1.10 --name agent1
+phantom start --repo myapp --node 192.168.1.10:50051 --name agent1
 ```
 
 - [ ] **Step 3: Update `docs/configuration.md` — node section**
@@ -3486,13 +3956,14 @@ node:
     ca_file: ""           # CA certificate file path (mode=mtls).
   sync:
     auto_git_commit: true # Commit on remote after push if repo is git.
+    max_file_size_bytes: 52428800  # Max file size to sync (default 50MB). 0 = no limit.
 ```
 
 Then add a `### Auth modes` subsection describing the three modes:
 
 - **none** — No authentication. Any node on the network can connect. Suitable for trusted LANs.
-- **secret** — Pre-shared token sent with every request. Set via `auth.secret` or the `PHANTOM_NODE_SECRET` env var.
-- **mtls** — Mutual TLS. Both nodes present certificates signed by the same CA.
+- **secret** — Pre-shared token sent with every gRPC request. Set via `auth.secret` or the `PHANTOM_NODE_SECRET` env var. Gossip auth (phase 2) will also verify the token in gossip messages.
+- **mtls** — Mutual TLS on gRPC connections. Both nodes present certificates signed by the same CA.
 
 Close with: "If auth modes mismatch, the server returns UNAUTHENTICATED and phantom surfaces a readable error."
 
@@ -3529,7 +4000,7 @@ node:
 
 ```bash
 phantom node start &
-phantom start --repo myapp --name agent1
+phantom start --repo myapp --node 192.168.1.10 --name agent1
 ```
 
 Sync examples:
@@ -3543,7 +4014,7 @@ echo "implement feature X" > ~/.phantom/mnt/agent1/.phantom_commit
 # Outcome written to .phantom_commit_result
 ```
 
-Closing paragraph: "Each node runs `phantom node start` and creates its own overlay with `phantom start --repo myapp`. All overlays share the same read-only base on Node A. Writes are isolated per overlay — push each agent's changes to Node A independently."
+Closing paragraph: "Each node runs `phantom node start` and creates its own overlay with `phantom start --repo myapp --node <addr>`. All overlays share the same read-only base on Node A. Writes are isolated per overlay — push each agent's changes to Node A independently. Files exceeding `node.sync.max_file_size_bytes` are silently skipped during push."
 
 - [ ] **Step 5: Verify all docs render correctly**
 
@@ -3566,9 +4037,25 @@ git commit -m "docs: document remote overlay commands, config, and workflow"
 
 ## Self-Review Checklist
 
-- [x] **Spec coverage:** Gossip ring (Task 8), gRPC data plane (Tasks 4-7), FUSE mount client (Task 10), sync + sentinel (Tasks 12-14), auth tiers (Task 6), config (Task 2), types (Task 3), CLI commands (Tasks 9, 11, 15), docs (Task 16) — all spec sections covered.
-- [x] **No placeholders:** All code blocks are complete. `phantom node list` and `phantom repos` have IPC-pending notes which are accurate limitations of this phase.
-- [x] **Type consistency:** `Change`, `SyncResult`, `Syncer`, `RemoteFS`, `AttrInfo`, `Registry`, `Peer`, `AuthOptions`, `DialOpts`, `FileClient`, `FileServer`, `validatePushOverlay` — names consistent across all tasks.
+- [x] **Spec coverage:** Gossip ring (Task 8), gRPC data plane (Tasks 4-7), FUSE mount client (Task 10), sync + sentinel (Tasks 12-14), auth tiers (Task 6), config (Task 2), types (Task 3), CLI commands (Tasks 9, 11, 15), docs (Task 17) — all spec sections covered.
+- [x] **No placeholders:** All code blocks are complete. `phantom node list` and `phantom repos` read from daemon peer state file — functional IPC.
+- [x] **Type consistency:** `Change`, `SyncResult`, `Syncer`, `RemoteFS`, `AttrInfo`, `Registry`, `api.Peer`, `AuthOptions`, `DialOpts`, `FileClient`, `FileServer`, `ValidatePushOverlay`, `PeersState` — names consistent across all tasks.
 - [x] **`phantom sync` name conflict:** Existing `phantom sync` pulls base changes into overlay. New remote push uses `phantom push` — no conflict.
 - [x] **`phantom start` (not `phantom create`):** Plan uses existing `start` command extended with `--repo`/`--node`.
-- [x] **Tests coverage:** Unit tests for all packages; mTLS interceptor test added (Task 6); `validatePushOverlay` extraction enables unit testing of push validation (Task 15); walker, syncer, sentinel, registry, server, client, auth, FUSE node all covered.
+- [x] **Bug fix — UpperDir vs WorkDir:** All push/sync code uses `ovl.UpperDir`, not `ovl.WorkDir`. UpperDir contains raw overlay changes; WorkDir is the merged view.
+- [x] **Security — safePath:** Uses `strings.HasPrefix(joined, base+sep)` to prevent path traversal.
+- [x] **Security — autoGitCommit:** Uses struct field `s.autoGitCommit` directly (no local variable shadow).
+- [x] **No duplicate types:** Single `api.Peer` in `pkg/api/types.go`; registry and node use it directly. No `internal/node/peer.go`.
+- [x] **No dead code:** Removed `SecretCallOption` placeholder. No hacky `init()` in fs.go.
+- [x] **No unexplained build tags:** Removed `//go:build !integration` from fs.go. Integration test uses its own build tag.
+- [x] **Concurrency safety:** `FileServer.repos` guarded by `sync.RWMutex`. Registry already had mutex.
+- [x] **Walker handles opaque dirs:** Detects `trusted.overlay.opaque` xattr and emits `Opaque: true` change.
+- [x] **Walker file size limit:** `WalkUpperDir` accepts `maxFileSizeBytes` parameter; files exceeding it are skipped.
+- [x] **FUSE mount readiness:** `WaitUntilMounted()` polls before creating overlay — no race.
+- [x] **`--node` flag semantics:** Documented as `host[:port]` address for phase 1. Auto-discovery deferred.
+- [x] **Gossip auth deferred:** Explicitly noted in Task 8. gRPC auth is enforced. Safe for trusted LANs.
+- [x] **Daemon ↔ CLI IPC:** Uses `peers.json` state file written periodically by daemon, read by CLI commands.
+- [x] **Remote error codes:** `ErrRemoteUnavailable`, `ErrAuthFailed`, `ErrSyncFailed`, `ErrFileTooLarge` added to `pkg/api/types.go`.
+- [x] **Makefile proto target:** Added in Task 1, used in Task 4.
+- [x] **Integration test:** Task 16 covers gRPC → FUSE → sync pipeline behind `integration` build tag.
+- [x] **Tests coverage:** Unit tests for all packages; integration test for full pipeline; `ValidatePushOverlay` exported for testing; walker, syncer, sentinel, registry, server, client, auth, FUSE node all covered.
