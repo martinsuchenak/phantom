@@ -108,6 +108,7 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 		Seeds:    nc.Seeds,
 		Repos:    repoNames,
 		PIDFile:  cfg.GetNodePIDPath(),
+		Logger:   log,
 	}
 
 	peersStatePath := cfg.GetPeersStatePath()

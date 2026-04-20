@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -603,7 +605,10 @@ func TestEnsureNodeDefaults_GeneratesID(t *testing.T) {
 	changes := cfg.EnsureNodeDefaults()
 
 	if cfg.Node.ID == "" {
-		t.Error("expected node ID to be set from hostname")
+		t.Error("expected node ID to be generated")
+	}
+	if _, err := uuid.Parse(cfg.Node.ID); err != nil {
+		t.Errorf("expected node ID to be a valid UUID, got %q", cfg.Node.ID)
 	}
 	if len(changes) == 0 {
 		t.Error("expected at least one change to be reported")

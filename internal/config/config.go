@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -310,12 +311,8 @@ func (c *Config) EnsureNodeDefaults() []string {
 	var changed []string
 
 	if nc.ID == "" {
-		hostname, _ := os.Hostname()
-		if hostname == "" {
-			hostname = "phantom-node"
-		}
-		nc.ID = hostname
-		changed = append(changed, fmt.Sprintf("node.id = %q (from hostname)", nc.ID))
+		nc.ID = uuid.New().String()
+		changed = append(changed, fmt.Sprintf("node.id = %q (generated UUID)", nc.ID))
 	}
 	if nc.GRPCPort == 0 {
 		nc.GRPCPort = 50051
