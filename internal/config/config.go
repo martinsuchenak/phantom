@@ -195,6 +195,12 @@ func DefaultConfig() *Config {
 	}
 }
 
+// DefaultConfigPath returns the default config file path (~/.phantom/config.yaml).
+func DefaultConfigPath() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".phantom", "config.yaml")
+}
+
 // Load loads configuration from a file
 func Load(path string) (*Config, error) {
 	// Start with defaults
@@ -310,7 +316,7 @@ func (c *Config) EnsureNodeDefaults() []string {
 	nc := &c.Node
 	var changed []string
 
-	if nc.ID == "" {
+	if _, err := uuid.Parse(nc.ID); err != nil {
 		nc.ID = uuid.New().String()
 		changed = append(changed, fmt.Sprintf("node.id = %q (generated UUID)", nc.ID))
 	}

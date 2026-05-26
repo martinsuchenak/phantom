@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -626,7 +627,7 @@ func TestEnsureNodeDefaults_GeneratesID(t *testing.T) {
 
 func TestEnsureNodeDefaults_NoChangesWhenFullyConfigured(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Node.ID = "my-node"
+	cfg.Node.ID = uuid.New().String() // must be a valid UUID
 	cfg.Node.GRPCPort = 50051
 	cfg.Node.GossipPort = 7946
 	cfg.Node.Auth.Mode = "none"
@@ -640,7 +641,7 @@ func TestEnsureNodeDefaults_NoChangesWhenFullyConfigured(t *testing.T) {
 
 func TestEnsureNodeDefaults_FillsZeroPorts(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Node.ID = "test-node"
+	cfg.Node.ID = uuid.New().String() // valid UUID — only ports should be filled
 	cfg.Node.GRPCPort = 0
 	cfg.Node.GossipPort = 0
 
@@ -659,7 +660,7 @@ func TestEnsureNodeDefaults_FillsZeroPorts(t *testing.T) {
 
 func TestEnsureNodeDefaults_FillsAuthAndSync(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.Node.ID = "test-node"
+	cfg.Node.ID = uuid.New().String() // valid UUID — only auth/sync should be filled
 	cfg.Node.Auth.Mode = ""
 	cfg.Node.Sync.MaxFileSizeBytes = 0
 
@@ -739,5 +740,21 @@ logging:
 	expected := filepath.Join(homeDir, "phantom-test")
 	if cfg.StateDir != expected {
 		t.Errorf("StateDir = %q, want %q", cfg.StateDir, expected)
+	}
+}
+
+func TestDefaultConfigPath(t *testing.T) {
+	path := DefaultConfigPath()
+	if path == "" {
+		t.Fatal("expected non-empty path")
+	}
+	if filepath.Base(path) != "config.yaml" {
+		t.Errorf("expected path to end in config.yaml, got %q", path)
+	}
+	if !strings.Contains(path, ".phantom") {
+		t.Errorf("expected path to contain .phantom, got %q", path)
+	}
+	if !filepath.IsAbs(path) {
+		t.Errorf("expected absolute path, got %q", path)
 	}
 }

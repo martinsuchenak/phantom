@@ -179,3 +179,59 @@ func TestRead_WithOffset(t *testing.T) {
 		t.Errorf("expected 'world', got %q", got)
 	}
 }
+
+func setupServerDirect(t *testing.T, repos map[string]string) (*rpc.FileServer, proto.FileServiceClient, func()) {
+	t.Helper()
+	lis := bufconn.Listen(bufSize)
+	srv := grpc.NewServer()
+	fs := rpc.NewFileServerWithOptions(repos, false, 0)
+	proto.RegisterFileServiceServer(srv, fs)
+	go srv.Serve(lis)
+	conn, err := grpc.NewClient("passthrough://bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return lis.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("failed to dial bufconn: %v", err)
+	}
+	return fs, proto.NewFileServiceClient(conn), func() { conn.Close(); srv.Stop() }
+}
+
+func TestUpdateRepos(t *testing.T) {
+	oldDir := t.TempDir()
+	os.WriteFile(filepath.Join(oldDir, "old.txt"), []byte("old"), 0644)
+	newDir := t.TempDir()
+	os.WriteFile(filepath.Join(newDir, "new.txt"), []byte("new"), 0644)
+
+	fs, client, cleanup := setupServerDirect(t, map[string]string{"old-repo": oldDir})
+	defer cleanup()
+
+	resp, err := client.ListRepos(context.Background(), &proto.ListReposRequest{})
+	if err != nil {
+		t.Fatalf("ListRepos before update: %v", err)
+	}
+	if len(resp.Repos) != 1 || resp.Repos[0].Name != "old-repo" {
+		t.Errorf("expected [old-repo] before update, got %v", resp.Repos)
+	}
+	if _, err = client.Stat(context.Background(), &proto.StatRequest{Repo: "old-repo", Path: "old.txt"}); err != nil {
+		t.Fatalf("Stat old-repo/old.txt before update: %v", err)
+	}
+
+	fs.UpdateRepos(map[string]string{"new-repo": newDir})
+
+	resp, err = client.ListRepos(context.Background(), &proto.ListReposRequest{})
+	if err != nil {
+		t.Fatalf("ListRepos after update: %v", err)
+	}
+	if len(resp.Repos) != 1 || resp.Repos[0].Name != "new-repo" {
+		t.Errorf("expected [new-repo] after update, got %v", resp.Repos)
+	}
+	if _, err = client.Stat(context.Background(), &proto.StatRequest{Repo: "old-repo", Path: "old.txt"}); err == nil {
+		t.Error("expected error for old-repo after UpdateRepos, got nil")
+	}
+	if _, err = client.Stat(context.Background(), &proto.StatRequest{Repo: "new-repo", Path: "new.txt"}); err != nil {
+		t.Fatalf("Stat new-repo/new.txt after update: %v", err)
+	}
+}

@@ -15,6 +15,10 @@ type MountOpts struct {
 	// ReadyCh is closed once the FUSE server has successfully mounted and is
 	// ready to serve requests. Optional; ignored if nil.
 	ReadyCh chan<- struct{}
+	// ReadyFile is a file path that is written once the mount is ready.
+	// Used for cross-process readiness signalling (e.g. _fuse-daemon).
+	// Optional; ignored if empty.
+	ReadyFile string
 }
 
 func Mount(ctx context.Context, rfs *RemoteFS, opts MountOpts) error {
@@ -41,7 +45,13 @@ func Mount(ctx context.Context, rfs *RemoteFS, opts MountOpts) error {
 	if opts.ReadyCh != nil {
 		close(opts.ReadyCh)
 	}
+	if opts.ReadyFile != "" {
+		_ = os.WriteFile(opts.ReadyFile, []byte("ready"), 0600)
+	}
 
 	<-ctx.Done()
+	if opts.ReadyFile != "" {
+		_ = os.Remove(opts.ReadyFile)
+	}
 	return server.Unmount()
 }

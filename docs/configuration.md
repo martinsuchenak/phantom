@@ -52,6 +52,9 @@ projects:                        # registered projects (local aliases + optional
     path: "/Users/user/Projects/other"
                                  # serve omitted / false → local alias only
 
+# phantom node start watches this file and hot-reloads within ~300ms when
+# projects are added or serve flags change — no daemon restart required.
+
 node:
   id: ""                         # Stable node identity. Auto-set from hostname if empty.
   gossip_port: 7946              # UDP port for gossip ring membership.

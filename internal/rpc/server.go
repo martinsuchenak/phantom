@@ -33,6 +33,13 @@ func NewFileServerWithOptions(repos map[string]string, autoGitCommit bool, maxFi
 	return &FileServer{repos: repos, autoGitCommit: autoGitCommit, maxFileSizeBytes: maxFileSizeBytes}
 }
 
+// UpdateRepos replaces the served repo map at runtime (live reload).
+func (s *FileServer) UpdateRepos(repos map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.repos = repos
+}
+
 func (s *FileServer) repoPath(repo string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

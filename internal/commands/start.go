@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/git"
 	phantommdns "github.com/martinsuchenak/phantom/internal/mdns"
-	"github.com/martinsuchenak/phantom/internal/remotefs"
-	"github.com/martinsuchenak/phantom/internal/rpc"
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
@@ -107,13 +107,6 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 		grpcAddr = fmt.Sprintf("%s:%d", nodeAddr, cfg.Node.GRPCPort)
 	}
 
-	authOpts := rpc.DialOpts{
-		Auth: rpc.AuthOptions{
-			Mode:   rpc.AuthMode(cfg.Node.Auth.Mode),
-			Secret: cfg.Node.Auth.Secret,
-		},
-	}
-
 	mountBase := cfg.GetRemoteMountsPath()
 	safeNodeName := strings.ReplaceAll(grpcAddr, ":", "_")
 	remoteMountPath := filepath.Join(mountBase, safeNodeName, repo)
@@ -121,34 +114,60 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 		return fmt.Errorf("create remote mount dir: %w", err)
 	}
 
-	rfs, err := remotefs.NewRemoteFSFromDial(ctx, grpcAddr, authOpts, repo)
-	if err != nil {
-		return fmt.Errorf("connect to node %s: %w", grpcAddr, err)
-	}
-
 	if name == "" {
 		name = repo
 	}
 
-	fuseCtx, fuseCancel := context.WithCancel(ctx)
-	defer fuseCancel()
-	readyCh := make(chan struct{})
-	fuseErrCh := make(chan error, 1)
-	go func() {
-		fuseErrCh <- remotefs.Mount(fuseCtx, rfs, remotefs.MountOpts{MountPoint: remoteMountPath, ReadyCh: readyCh})
-	}()
+	// Launch _fuse-daemon as a detached background process so the FUSE mount
+	// outlives the phantom start process.
+	selfExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable path: %w", err)
+	}
+	readyFile := remoteMountPath + ".fuse_ready"
+	_ = os.Remove(readyFile) // ensure stale ready file is gone
 
-	select {
-	case <-readyCh:
-		// FUSE server is ready.
-	case err := <-fuseErrCh:
-		return fmt.Errorf("FUSE mount failed: %w", err)
-	case <-time.After(10 * time.Second):
-		fuseCancel()
-		select {
-		case <-fuseErrCh:
-		case <-time.After(5 * time.Second):
+	daemonArgs := []string{
+		"_fuse-daemon",
+		"--addr", grpcAddr,
+		"--repo", repo,
+		"--mountpoint", remoteMountPath,
+		"--ready-file", readyFile,
+		"--auth-mode", cfg.Node.Auth.Mode,
+		"--auth-secret", cfg.Node.Auth.Secret,
+	}
+	if cfg.Node.Auth.CertFile != "" {
+		daemonArgs = append(daemonArgs, "--auth-cert", cfg.Node.Auth.CertFile)
+	}
+	if cfg.Node.Auth.KeyFile != "" {
+		daemonArgs = append(daemonArgs, "--auth-key", cfg.Node.Auth.KeyFile)
+	}
+	if cfg.Node.Auth.CAFile != "" {
+		daemonArgs = append(daemonArgs, "--auth-ca", cfg.Node.Auth.CAFile)
+	}
+
+	fuseDaemon := exec.CommandContext(context.Background(), selfExe, daemonArgs...)
+	fuseDaemon.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from terminal
+	if err := fuseDaemon.Start(); err != nil {
+		return fmt.Errorf("start fuse-daemon: %w", err)
+	}
+	fusePID := fuseDaemon.Process.Pid
+
+	// Poll for the ready file (up to 15s).
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(readyFile); err == nil {
+			break
 		}
+		select {
+		case <-ctx.Done():
+			_ = fuseDaemon.Process.Kill()
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	if _, err := os.Stat(readyFile); err != nil {
+		_ = fuseDaemon.Process.Kill()
 		return fmt.Errorf("timed out waiting for FUSE mount at %s", remoteMountPath)
 	}
 
@@ -162,17 +181,14 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 				ovl.RemoteNode = grpcAddr
 				ovl.RemoteRepo = repo
 				ovl.RemoteMountPath = remoteMountPath
+				ovl.FUSEPid = fusePID
 				_ = store.Save(ovl)
 			}
 		}
 	}
 
 	if overlayErr != nil {
-		fuseCancel()
-		select {
-		case <-fuseErrCh:
-		case <-time.After(5 * time.Second):
-		}
+		_ = fuseDaemon.Process.Kill()
 	}
 
 	return overlayErr

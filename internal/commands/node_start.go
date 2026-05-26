@@ -4,8 +4,14 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync"
+	"syscall"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/martinsuchenak/phantom/internal/config"
 	phantommdns "github.com/martinsuchenak/phantom/internal/mdns"
 	"github.com/martinsuchenak/phantom/internal/node"
@@ -54,25 +60,10 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 
 	nc := cfg.Node
 
-	repos := make(map[string]string)
-	repoNames := make([]string, 0)
-	for name, proj := range cfg.Projects {
-		if proj.Serve {
-			repos[name] = proj.Path
-			repoNames = append(repoNames, name)
-		}
-	}
-
+	repos, repoNames := servedRepos(cfg)
 	if len(repos) == 0 {
-		return fmt.Errorf(
-			"no projects are marked as served — mark at least one project:\n\n" +
-				"  phantom project serve <name>\n\n" +
-				"or in config:\n\n" +
-				"  projects:\n" +
-				"    myapp:\n" +
-				"      path: /path/to/myapp\n" +
-				"      serve: true\n",
-		)
+		log.Warn("No projects are marked as served. Use 'phantom project serve <name>' to expose a project.")
+		log.Warn("The gRPC server will start but remote overlays cannot connect until a project is served.")
 	}
 
 	fileServer := rpc.NewFileServerWithOptions(repos, nc.Sync.AutoGitCommit, nc.Sync.MaxFileSizeBytes)
@@ -100,15 +91,19 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 
 	registry := node.NewRegistry()
 
+	// repoUpdateCh delivers updated repo slices to the gossip node on live reload.
+	repoUpdateCh := make(chan []string, 1)
+
 	gossipAddr := fmt.Sprintf(":%d", nc.GossipPort)
 	nodeCfg := node.Config{
-		ID:       nc.ID,
-		BindAddr: gossipAddr,
-		GRPCAddr: fmt.Sprintf("%s:%d", outboundIP(), nc.GRPCPort),
-		Seeds:    nc.Seeds,
-		Repos:    repoNames,
-		PIDFile:  cfg.GetNodePIDPath(),
-		Logger:   log,
+		ID:           nc.ID,
+		BindAddr:     gossipAddr,
+		GRPCAddr:     fmt.Sprintf("%s:%d", outboundIP(), nc.GRPCPort),
+		Seeds:        nc.Seeds,
+		Repos:        repoNames,
+		PIDFile:      cfg.GetNodePIDPath(),
+		Logger:       log,
+		RepoUpdateCh: repoUpdateCh,
 	}
 
 	peersStatePath := cfg.GetPeersStatePath()
@@ -130,12 +125,24 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 		}
 	}()
 
-	mdnsSrv, err := phantommdns.Announce(nc.ID, nc.GRPCPort, repoNames)
-	if err != nil {
+	// mDNS server with live-swap support.
+	var mdnsMu sync.Mutex
+	var mdnsSrv *phantommdns.Server
+	if srv, err := phantommdns.Announce(nc.ID, nc.GRPCPort, repoNames); err != nil {
 		log.Warn("mDNS announce failed (LAN auto-discovery disabled): %v", err)
 	} else {
-		defer mdnsSrv.Close()
+		mdnsSrv = srv
 	}
+	defer func() {
+		mdnsMu.Lock()
+		if mdnsSrv != nil {
+			mdnsSrv.Close()
+		}
+		mdnsMu.Unlock()
+	}()
+
+	// Watch config file for changes and hot-reload served projects.
+	go watchConfigReload(ctx, nc, fileServer, repoUpdateCh, &mdnsMu, &mdnsSrv)
 
 	startRemoteSentinels(ctx, nc)
 
@@ -149,9 +156,106 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 	return nil
 }
 
-// startRemoteSentinels loads all remote overlays from the state store and
-// starts a sentinel watcher goroutine for each one so that the daemon (not the
-// short-lived `phantom start` process) owns the sync lifecycle.
+// servedRepos extracts the repos map and names slice from config.
+func servedRepos(c *config.Config) (map[string]string, []string) {
+	repos := make(map[string]string)
+	names := make([]string, 0)
+	for name, proj := range c.Projects {
+		if proj.Serve {
+			repos[name] = proj.Path
+			names = append(names, name)
+		}
+	}
+	return repos, names
+}
+
+// watchConfigReload watches the config file and hot-reloads served projects.
+func watchConfigReload(
+	ctx context.Context,
+	nc config.NodeConfig,
+	fileServer *rpc.FileServer,
+	repoUpdateCh chan<- []string,
+	mdnsMu *sync.Mutex,
+	mdnsSrv **phantommdns.Server,
+) {
+	// Resolve the config file path (cfgPath may be empty → default location).
+	watchPath := cfgPath
+	if watchPath == "" {
+		watchPath = config.DefaultConfigPath()
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Warn("config watcher: failed to create fsnotify watcher: %v", err)
+		return
+	}
+	defer watcher.Close()
+
+	// Watch the directory; file-level watches miss atomic saves (rename+create).
+	if err := watcher.Add(filepath.Dir(watchPath)); err != nil {
+		log.Warn("config watcher: cannot watch %s: %v", filepath.Dir(watchPath), err)
+		return
+	}
+
+	var debounce <-chan time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if filepath.Clean(event.Name) != filepath.Clean(watchPath) {
+				continue
+			}
+			if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+				continue
+			}
+			// Debounce: editors often fire multiple events in quick succession.
+			debounce = time.After(300 * time.Millisecond)
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Warn("config watcher error: %v", err)
+		case <-debounce:
+			debounce = nil
+			newCfg, err := config.Load(watchPath)
+			if err != nil {
+				log.Warn("config reload failed: %v", err)
+				continue
+			}
+			newRepos, newNames := servedRepos(newCfg)
+			fileServer.UpdateRepos(newRepos)
+
+			// Non-blocking send; gossip node picks it up when ready.
+			select {
+			case repoUpdateCh <- newNames:
+			default:
+			}
+
+			// Swap mDNS announcement.
+			mdnsMu.Lock()
+			if *mdnsSrv != nil {
+				(*mdnsSrv).Close()
+			}
+			if srv, err := phantommdns.Announce(nc.ID, nc.GRPCPort, newNames); err != nil {
+				log.Warn("mDNS re-announce failed: %v", err)
+				*mdnsSrv = nil
+			} else {
+				*mdnsSrv = srv
+			}
+			mdnsMu.Unlock()
+
+			log.Info("config reloaded: now serving %d project(s): %v", len(newRepos), newNames)
+		}
+	}
+}
+
+// startRemoteSentinels loads all remote overlays from the state store,
+// restarts any dead FUSE daemons, and starts a sync sentinel watcher goroutine
+// for each one so the daemon owns both the FUSE mount and the sync lifecycle.
 func startRemoteSentinels(ctx context.Context, nc config.NodeConfig) {
 	store, err := state.NewStore(cfg.GetStatePath())
 	if err != nil {
@@ -163,11 +267,62 @@ func startRemoteSentinels(ctx context.Context, nc config.NodeConfig) {
 		log.Debug("sentinel: failed to list overlays: %v", err)
 		return
 	}
+
+	selfExe, exeErr := os.Executable()
+
 	for _, ovl := range overlays {
 		if !ovl.Remote || ovl.RemoteNode == "" || ovl.RemoteRepo == "" {
 			continue
 		}
 		ovl := ovl
+
+		// Restart the fuse-daemon if it died (PID gone or process no longer exists).
+		if exeErr == nil && ovl.RemoteMountPath != "" {
+			needsMount := true
+			if ovl.FUSEPid > 0 {
+				proc, err := os.FindProcess(ovl.FUSEPid)
+				if err == nil && proc.Signal(syscall.Signal(0)) == nil {
+					needsMount = false // process still alive
+				}
+			}
+			if needsMount {
+				readyFile := ovl.RemoteMountPath + ".fuse_ready"
+				_ = os.Remove(readyFile)
+				daemonArgs := []string{
+					"_fuse-daemon",
+					"--addr", ovl.RemoteNode,
+					"--repo", ovl.RemoteRepo,
+					"--mountpoint", ovl.RemoteMountPath,
+					"--ready-file", readyFile,
+					"--auth-mode", nc.Auth.Mode,
+					"--auth-secret", nc.Auth.Secret,
+				}
+				if nc.Auth.CertFile != "" {
+					daemonArgs = append(daemonArgs, "--auth-cert", nc.Auth.CertFile)
+				}
+				if nc.Auth.KeyFile != "" {
+					daemonArgs = append(daemonArgs, "--auth-key", nc.Auth.KeyFile)
+				}
+				if nc.Auth.CAFile != "" {
+					daemonArgs = append(daemonArgs, "--auth-ca", nc.Auth.CAFile)
+				}
+				cmd := exec.CommandContext(context.Background(), selfExe, daemonArgs...)
+				cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+				if startErr := cmd.Start(); startErr == nil {
+					ovl.FUSEPid = cmd.Process.Pid
+					if s2, err2 := state.NewStore(cfg.GetStatePath()); err2 == nil {
+						if o2, err3 := s2.Load(ovl.Name); err3 == nil {
+							o2.FUSEPid = cmd.Process.Pid
+							_ = s2.Save(o2)
+						}
+					}
+					log.Info("sentinel: restarted fuse-daemon for overlay %q (PID %d)", ovl.Name, cmd.Process.Pid)
+				} else {
+					log.Warn("sentinel: failed to restart fuse-daemon for overlay %q: %v", ovl.Name, startErr)
+				}
+			}
+		}
+
 		go func() {
 			client, err := rpc.Dial(ctx, ovl.RemoteNode, rpc.DialOpts{
 				Auth:   rpc.AuthOptions{Mode: rpc.AuthMode(nc.Auth.Mode), Secret: nc.Auth.Secret},

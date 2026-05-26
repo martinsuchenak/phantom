@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
+	"syscall"
 
 	"github.com/martinsuchenak/phantom/internal/git"
 	"github.com/martinsuchenak/phantom/internal/state"
@@ -152,6 +154,15 @@ func processStop(ctx context.Context, name string, doCleanup, doPush, force bool
 		log.Debug("Cleaning up overlay data")
 		if err := mgr.Cleanup(ovl); err != nil {
 			return err
+		}
+	}
+
+	// Kill the FUSE daemon process for remote overlays.
+	if ovl.FUSEPid > 0 {
+		if proc, err := os.FindProcess(ovl.FUSEPid); err == nil {
+			if killErr := proc.Signal(syscall.SIGTERM); killErr == nil {
+				log.Debug("Sent SIGTERM to fuse-daemon PID %d", ovl.FUSEPid)
+			}
 		}
 	}
 

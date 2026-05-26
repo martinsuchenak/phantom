@@ -97,6 +97,7 @@ func Execute() {
 			NewTemplateCommand(),
 			NewRenameCommand(),
 			NewInspectCommand(),
+			NewFuseDaemonCommand(),
 			NewConflictsCommand(),
 			NewGCCommand(),
 			NewConfigCommand(),

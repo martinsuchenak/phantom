@@ -23,13 +23,16 @@ type Meta struct {
 }
 
 type Config struct {
-	ID       string
-	BindAddr string
-	GRPCAddr string
-	Seeds    []string
-	Repos    []string
-	PIDFile  string
-	Logger   logger.Logger
+	ID           string
+	BindAddr     string
+	GRPCAddr     string
+	Seeds        []string
+	Repos        []string
+	PIDFile      string
+	Logger       logger.Logger
+	// RepoUpdateCh receives updated repo slices when the served project list
+	// changes at runtime. A nil channel disables live updates.
+	RepoUpdateCh <-chan []string
 }
 
 func upsertFromMeta(registry *Registry, nodeMeta gossip.MetadataReader) {
@@ -129,10 +132,26 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
 		cfg.Logger.Info("gossip: joined ring successfully")
 	}
 
-	<-ctx.Done()
-	cfg.Logger.Info("gossip: shutting down, leaving ring")
-	cluster.Leave()
-	return nil
+	for {
+		select {
+		case <-ctx.Done():
+			cfg.Logger.Info("gossip: shutting down, leaving ring")
+			cluster.Leave()
+			return nil
+		case repos, ok := <-cfg.RepoUpdateCh:
+			if !ok {
+				continue
+			}
+			updated, _ := json.Marshal(Meta{
+				ID:       nodeID,
+				GRPCAddr: cfg.GRPCAddr,
+				Repos:    repos,
+				Version:  1,
+			})
+			cluster.LocalMetadata().SetString("node_meta", string(updated))
+			cfg.Logger.Info("gossip: updated advertised repos: %v", repos)
+		}
+	}
 }
 
 func nodeIDPath(pidFile string) string {
