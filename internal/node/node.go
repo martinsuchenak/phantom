@@ -25,6 +25,7 @@ type Meta struct {
 type Config struct {
 	ID           string
 	BindAddr     string
+	AdvertiseAddr string
 	GRPCAddr     string
 	Seeds        []string
 	Repos        []string
@@ -67,7 +68,11 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
 	gossipCfg := gossip.DefaultConfig()
 	gossipCfg.NodeID = nodeID
 	gossipCfg.BindAddr = cfg.BindAddr
-	gossipCfg.AdvertiseAddr = cfg.BindAddr
+	if cfg.AdvertiseAddr != "" {
+		gossipCfg.AdvertiseAddr = cfg.AdvertiseAddr
+	} else {
+		gossipCfg.AdvertiseAddr = cfg.BindAddr
+	}
 	gossipCfg.Transport = gossip.NewSocketTransport(gossipCfg)
 	gossipCfg.MsgCodec = codec.NewJsonCodec()
 

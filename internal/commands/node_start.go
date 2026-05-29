@@ -121,9 +121,10 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 
 	gossipAddr := fmt.Sprintf(":%d", nc.GossipPort)
 	nodeCfg := node.Config{
-		ID:           nc.ID,
-		BindAddr:     gossipAddr,
-		GRPCAddr:     fmt.Sprintf("%s:%d", outboundIP(), nc.GRPCPort),
+		ID:            nc.ID,
+		BindAddr:      gossipAddr,
+		AdvertiseAddr: fmt.Sprintf("%s:%d", outboundIP(), nc.GossipPort),
+		GRPCAddr:      fmt.Sprintf("%s:%d", outboundIP(), nc.GRPCPort),
 		Seeds:        nc.Seeds,
 		Repos:        repoNames,
 		PIDFile:      cfg.GetNodePIDPath(),
