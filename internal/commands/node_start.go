@@ -19,8 +19,10 @@ import (
 	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/state"
 	synckit "github.com/martinsuchenak/phantom/internal/sync"
+	phantomtsnet "github.com/martinsuchenak/phantom/internal/tsnet"
 	"github.com/paularlott/cli"
 	"google.golang.org/grpc"
+	"tailscale.com/tsnet"
 )
 
 func NewNodeCommand() *cli.Command {
@@ -77,9 +79,32 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 	proto.RegisterFileServiceServer(grpcServer, fileServer)
 
 	grpcAddr := fmt.Sprintf(":%d", nc.GRPCPort)
-	lis, err := net.Listen("tcp", grpcAddr)
-	if err != nil {
-		return fmt.Errorf("listen on %s: %w", grpcAddr, err)
+
+	var tsnetSrv *tsnet.Server
+	var lis net.Listener
+
+	tsnetCfg := phantomtsnet.Config{
+		Hostname:   nc.Tsnet.Hostname,
+		Dir:        cfg.TsnetDirOrDefault(),
+		AuthKey:    nc.Tsnet.AuthKey,
+		ControlURL: nc.Tsnet.ControlURL,
+	}
+
+	if phantomtsnet.IsEnabled(tsnetCfg) {
+		var dl *phantomtsnet.DualListener
+		srv, dl, err := phantomtsnet.Setup(ctx, tsnetCfg, grpcAddr)
+		if err != nil {
+			return fmt.Errorf("tsnet setup: %w", err)
+		}
+		tsnetSrv = srv
+		lis = dl
+		log.Info("tsnet enabled (hostname=%s, tailscale IPs will be logged above)", tsnetCfg.Hostname)
+	} else {
+		var err error
+		lis, err = net.Listen("tcp", grpcAddr)
+		if err != nil {
+			return fmt.Errorf("listen on %s: %w", grpcAddr, err)
+		}
 	}
 
 	go func() {
@@ -144,7 +169,7 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 	// Watch config file for changes and hot-reload served projects.
 	go watchConfigReload(ctx, nc, fileServer, repoUpdateCh, &mdnsMu, &mdnsSrv)
 
-	startRemoteSentinels(ctx, nc)
+	startRemoteSentinels(ctx, nc, tsnetSrv)
 
 	log.Info("Starting gossip node %s on %s", nc.ID, gossipAddr)
 	if err := node.Start(ctx, nodeCfg, registry); err != nil {
@@ -153,6 +178,9 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	grpcServer.GracefulStop()
+	if tsnetSrv != nil {
+		_ = tsnetSrv.Close()
+	}
 	return nil
 }
 
@@ -256,7 +284,7 @@ func watchConfigReload(
 // startRemoteSentinels loads all remote overlays from the state store,
 // restarts any dead FUSE daemons, and starts a sync sentinel watcher goroutine
 // for each one so the daemon owns both the FUSE mount and the sync lifecycle.
-func startRemoteSentinels(ctx context.Context, nc config.NodeConfig) {
+func startRemoteSentinels(ctx context.Context, nc config.NodeConfig, tsnetSrv *tsnet.Server) {
 	store, err := state.NewStore(cfg.GetStatePath())
 	if err != nil {
 		log.Debug("sentinel: failed to open state store: %v", err)
@@ -306,6 +334,16 @@ func startRemoteSentinels(ctx context.Context, nc config.NodeConfig) {
 				if nc.Auth.CAFile != "" {
 					daemonArgs = append(daemonArgs, "--auth-ca", nc.Auth.CAFile)
 				}
+				if nc.Tsnet.Hostname != "" {
+					daemonArgs = append(daemonArgs, "--tsnet-hostname", nc.Tsnet.Hostname)
+					daemonArgs = append(daemonArgs, "--tsnet-dir", cfg.TsnetDirOrDefault())
+					if nc.Tsnet.AuthKey != "" {
+						daemonArgs = append(daemonArgs, "--tsnet-authkey", nc.Tsnet.AuthKey)
+					}
+					if nc.Tsnet.ControlURL != "" {
+						daemonArgs = append(daemonArgs, "--tsnet-controlurl", nc.Tsnet.ControlURL)
+					}
+				}
 				cmd := exec.CommandContext(context.Background(), selfExe, daemonArgs...)
 				cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 				if startErr := cmd.Start(); startErr == nil {
@@ -324,12 +362,17 @@ func startRemoteSentinels(ctx context.Context, nc config.NodeConfig) {
 		}
 
 		go func() {
-			client, err := rpc.Dial(ctx, ovl.RemoteNode, rpc.DialOpts{
+			dialOpts := rpc.DialOpts{
 				Auth:   rpc.AuthOptions{Mode: rpc.AuthMode(nc.Auth.Mode), Secret: nc.Auth.Secret},
 				CAFile: nc.Auth.CAFile,
 				Cert:   nc.Auth.CertFile,
 				Key:    nc.Auth.KeyFile,
-			})
+			}
+			if tsnetSrv != nil {
+				dialer := phantomtsnet.NewSmartDialer(tsnetSrv, 10*time.Second)
+				dialOpts.ContextDialer = dialer.DialContext
+			}
+			client, err := rpc.Dial(ctx, ovl.RemoteNode, dialOpts)
 			if err != nil {
 				log.Warn("sentinel: failed to dial %s for overlay %q: %v", ovl.RemoteNode, ovl.Name, err)
 				return

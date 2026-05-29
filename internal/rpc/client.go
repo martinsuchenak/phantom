@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
+	"net"
 	"os"
 
 	"google.golang.org/grpc"
@@ -31,10 +32,11 @@ func NewFileClient(inner proto.FileServiceClient) *FileClient {
 }
 
 type DialOpts struct {
-	Auth   AuthOptions
-	CAFile string
-	Cert   string
-	Key    string
+	Auth          AuthOptions
+	CAFile        string
+	Cert          string
+	Key           string
+	ContextDialer func(context.Context, string) (net.Conn, error)
 }
 
 func Dial(ctx context.Context, addr string, opts DialOpts) (*FileClient, error) {
@@ -65,6 +67,10 @@ func Dial(ctx context.Context, addr string, opts DialOpts) (*FileClient, error) 
 		)
 	default:
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if opts.ContextDialer != nil {
+		dialOpts = append(dialOpts, grpc.WithContextDialer(opts.ContextDialer))
 	}
 
 	conn, err := grpc.NewClient(addr, dialOpts...)

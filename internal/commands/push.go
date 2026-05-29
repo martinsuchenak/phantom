@@ -3,9 +3,11 @@ package commands
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/martinsuchenak/phantom/internal/rpc"
 	synckit "github.com/martinsuchenak/phantom/internal/sync"
+	phantomtsnet "github.com/martinsuchenak/phantom/internal/tsnet"
 	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
@@ -70,12 +72,31 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// ovl.RemoteNode is stored as host:port during `phantom start --repo`.
-	client, err := rpc.Dial(ctx, ovl.RemoteNode, rpc.DialOpts{
+	dialOpts := rpc.DialOpts{
 		Auth:   rpc.AuthOptions{Mode: rpc.AuthMode(cfg.Node.Auth.Mode), Secret: cfg.Node.Auth.Secret},
 		CAFile: cfg.Node.Auth.CAFile,
 		Cert:   cfg.Node.Auth.CertFile,
 		Key:    cfg.Node.Auth.KeyFile,
-	})
+	}
+
+	if cfg.Node.Tsnet.Hostname != "" {
+		tsnetCfg := phantomtsnet.Config{
+			Hostname:   cfg.Node.Tsnet.Hostname,
+			Dir:        cfg.TsnetDirOrDefault(),
+			AuthKey:    cfg.Node.Tsnet.AuthKey,
+			ControlURL: cfg.Node.Tsnet.ControlURL,
+		}
+		srv, err := setupClientTsnet(ctx, tsnetCfg)
+		if err != nil {
+			return fmt.Errorf("tsnet setup: %w", err)
+		}
+		defer srv.Close()
+
+		dialer := phantomtsnet.NewSmartDialer(srv, 10*time.Second)
+		dialOpts.ContextDialer = dialer.DialContext
+	}
+
+	client, err := rpc.Dial(ctx, ovl.RemoteNode, dialOpts)
 	if err != nil {
 		return fmt.Errorf("dial remote node %q: %w", ovl.RemoteNode, err)
 	}

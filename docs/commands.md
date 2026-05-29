@@ -418,7 +418,7 @@ Manage the phantom node daemon. The daemon joins the gossip ring, announces itse
 
 | Subcommand | Description |
 |------------|-------------|
-| `phantom node start` | Start the daemon in the foreground. Writes PID to `~/.phantom/node.pid`. Reads settings from the `node:` config section. Announces the node via mDNS on startup. Periodically writes discovered peer state to `~/.phantom/peers.json` for CLI commands. Starting without any served projects is allowed (a warning is printed). The daemon **hot-reloads the config file** — running `phantom project serve <name>` while the daemon is running takes effect within ~300ms with no restart needed. |
+| `phantom node start` | Start the daemon in the foreground. Writes PID to `~/.phantom/node.pid`. Reads settings from the `node:` config section. Announces the node via mDNS on startup. Periodically writes discovered peer state to `~/.phantom/peers.json` for CLI commands. Starting without any served projects is allowed (a warning is printed). The daemon **hot-reloads the config file** — running `phantom project serve <name>` while the daemon is running takes effect within ~300ms with no restart needed. When `node.tsnet.hostname` is set, the gRPC server also listens on the Tailscale mesh. |
 | `phantom node stop` | Stop the running daemon via SIGTERM (reads PID from `~/.phantom/node.pid`). |
 | `phantom node list` | List peers from the cached state file. Use `--mdns` to discover live peers on the LAN instead (no daemon required). |
 
@@ -434,6 +434,14 @@ phantom push agent1 --message "implement feature X"
 | Flag | Description |
 |------|-------------|
 | `--message, -m` | Commit message for the remote node |
+
+### `phantom repos`
+
+List all repos advertised by peers in the gossip ring. Reads from `~/.phantom/peers.json` (requires the node daemon to be running).
+
+```bash
+phantom repos
+```
 
 ---
 

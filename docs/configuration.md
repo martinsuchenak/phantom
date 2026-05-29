@@ -56,7 +56,7 @@ projects:                        # registered projects (local aliases + optional
 # projects are added or serve flags change — no daemon restart required.
 
 node:
-  id: ""                         # Stable node identity. Auto-set from hostname if empty.
+  id: ""                         # Stable node identity. Auto-generated UUID if empty.
   gossip_port: 7946              # UDP port for gossip ring membership.
   grpc_port: 50051               # TCP port for gRPC file server.
   seeds:                         # Bootstrap peers to join the ring.
@@ -70,6 +70,11 @@ node:
   sync:
     auto_git_commit: true        # Commit on remote after push if repo is git.
     max_file_size_bytes: 52428800  # Max file size to sync (default 50MB). 0 = no limit.
+  tsnet:
+    hostname: ""                 # Tailscale hostname. Non-empty enables tsnet transport.
+    dir: ""                      # Tsnet state dir (default: <state_dir>/tsnet).
+    auth_key: ""                 # Tailscale auth key. Also: TS_AUTHKEY env var.
+    control_url: ""              # Custom coordination server (e.g. Headscale).
 ```
 
 ### Auth Modes
@@ -79,6 +84,28 @@ node:
 - **mtls** — Mutual TLS on gRPC connections. Both nodes present certificates signed by the same CA.
 
 If auth modes mismatch, the server returns `UNAUTHENTICATED` and phantom surfaces a readable error.
+
+### Tailscale (tsnet) Transport
+
+When `node.tsnet.hostname` is non-empty, the node daemon creates a Tailscale mesh node using the [tsnet](https://tailscale.com/kb/1275/tsnet) library. The gRPC server listens on both the local network and the Tailscale mesh simultaneously — no port forwarding or certificate management required.
+
+- **Hostname** — the Tailscale node name. Must be unique within your tailnet.
+- **Auth key** — required for headless/automated startup. Generate one from the Tailscale admin console (use a reusable key with appropriate tags). Falls back to the `TS_AUTHKEY` env var.
+- **State directory** — defaults to `~/.phantom/tsnet`. Persists the Tailscale login state so re-auth is not needed on subsequent starts.
+- **Control URL** — set to a Headscale or custom coordination server URL if not using Tailscale's SaaS control plane. Falls back to `TS_CONTROL_URL` env var.
+
+On first start (without an auth key), tsnet prints an authentication URL to the log. Visit the URL to approve the node. After that, state is cached in the tsnet directory.
+
+Environment variable overrides:
+
+| Variable | Maps to |
+|----------|---------|
+| `PHANTOM_TSNET_HOSTNAME` | `node.tsnet.hostname` |
+| `PHANTOM_TSNET_DIR` | `node.tsnet.dir` |
+| `PHANTOM_TSNET_AUTHKEY` | `node.tsnet.auth_key` |
+| `TS_AUTHKEY` | `node.tsnet.auth_key` (fallback) |
+| `PHANTOM_TSNET_CONTROLURL` | `node.tsnet.control_url` |
+| `TS_CONTROL_URL` | `node.tsnet.control_url` (fallback) |
 
 ### Validation Rules
 
@@ -132,6 +159,7 @@ Set to `0` to disable. For manual control, use `phantom prune`.
 ├── remote-mounts/           # FUSE-mounted remote repos (0700)
 │   └── 192_168_1_10_50051/
 │       └── myapp/
+├── tsnet/                   # Tailscale tsnet state (when enabled)
 ├── logs/                    # Agent execution logs (0700)
 │   ├── feature-a.log
 │   └── feature-b.log

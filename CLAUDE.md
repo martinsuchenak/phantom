@@ -9,20 +9,20 @@ Phantom is a CLI tool for managing overlay filesystems that enables multiple AI 
 ## Build and Development Commands
 
 ```bash
-make build          # Build for current platform -> dist/phantom
-make test           # Run all tests
-make test-short     # Run tests in short mode
-make coverage       # Tests with coverage report (coverage.html)
-make check          # Run fmt + vet + lint + test (complete check)
-make lint           # Run golangci-lint
-make fmt            # Format code with gofmt
-make run ARGS="start /path"  # Build and run with arguments
+task build          # Build for current platform -> dist/phantom
+task test           # Run all tests
+task test-short     # Run tests in short mode
+task coverage       # Tests with coverage report (coverage.html)
+task check          # Run fmt + vet + lint + test (complete check)
+task lint           # Run golangci-lint
+task fmt            # Format code with gofmt
+task run -- start /path  # Build and run with arguments
 ```
 
 For cross-platform builds:
 ```bash
-make build-all      # Cross-compile for linux/darwin (amd64/arm64)
-make build-platform GOOS=linux GOARCH=arm64  # Specific platform
+task build-all      # Cross-compile for linux/darwin (amd64/arm64)
+task build-platform GOOS=linux GOARCH=arm64  # Specific platform
 ```
 
 ## Architecture

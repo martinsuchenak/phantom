@@ -341,6 +341,76 @@ func TestNodeConfigGetPeersStatePath(t *testing.T) {
 	}
 }
 
+func TestTsnetConfigDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Node.Tsnet.Hostname != "" {
+		t.Errorf("expected empty hostname, got %q", cfg.Node.Tsnet.Hostname)
+	}
+	if cfg.Node.Tsnet.AuthKey != "" {
+		t.Errorf("expected empty auth_key, got %q", cfg.Node.Tsnet.AuthKey)
+	}
+	if cfg.Node.Tsnet.ControlURL != "" {
+		t.Errorf("expected empty control_url, got %q", cfg.Node.Tsnet.ControlURL)
+	}
+}
+
+func TestTsnetDirOrDefault(t *testing.T) {
+	cfg := DefaultConfig()
+	dir := cfg.TsnetDirOrDefault()
+	if !strings.HasSuffix(dir, "tsnet") {
+		t.Errorf("expected path ending in tsnet, got %q", dir)
+	}
+
+	cfg.Node.Tsnet.Dir = "/custom/tsnet"
+	dir = cfg.TsnetDirOrDefault()
+	if dir != "/custom/tsnet" {
+		t.Errorf("expected /custom/tsnet, got %q", dir)
+	}
+}
+
+func TestTsnetEnvOverrides(t *testing.T) {
+	os.Setenv("PHANTOM_TSNET_HOSTNAME", "test-node")
+	defer os.Unsetenv("PHANTOM_TSNET_HOSTNAME")
+	os.Setenv("TS_AUTHKEY", "tskey-test")
+	defer os.Unsetenv("TS_AUTHKEY")
+
+	cfg := DefaultConfig()
+	applyEnvOverrides(cfg)
+
+	if cfg.Node.Tsnet.Hostname != "test-node" {
+		t.Errorf("expected hostname 'test-node', got %q", cfg.Node.Tsnet.Hostname)
+	}
+	if cfg.Node.Tsnet.AuthKey != "tskey-test" {
+		t.Errorf("expected auth_key 'tskey-test', got %q", cfg.Node.Tsnet.AuthKey)
+	}
+}
+
+func TestTsnetAuthKeyFallback(t *testing.T) {
+	os.Setenv("TS_AUTHKEY", "fallback-key")
+	defer os.Unsetenv("TS_AUTHKEY")
+
+	cfg := DefaultConfig()
+	applyEnvOverrides(cfg)
+
+	if cfg.Node.Tsnet.AuthKey != "fallback-key" {
+		t.Errorf("expected fallback auth_key, got %q", cfg.Node.Tsnet.AuthKey)
+	}
+}
+
+func TestTsnetAuthKeyPriority(t *testing.T) {
+	os.Setenv("PHANTOM_TSNET_AUTHKEY", "primary-key")
+	defer os.Unsetenv("PHANTOM_TSNET_AUTHKEY")
+	os.Setenv("TS_AUTHKEY", "fallback-key")
+	defer os.Unsetenv("TS_AUTHKEY")
+
+	cfg := DefaultConfig()
+	applyEnvOverrides(cfg)
+
+	if cfg.Node.Tsnet.AuthKey != "primary-key" {
+		t.Errorf("expected primary auth_key to take priority, got %q", cfg.Node.Tsnet.AuthKey)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsHelper(s, substr))
 }

@@ -145,6 +145,16 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 	if cfg.Node.Auth.CAFile != "" {
 		daemonArgs = append(daemonArgs, "--auth-ca", cfg.Node.Auth.CAFile)
 	}
+	if cfg.Node.Tsnet.Hostname != "" {
+		daemonArgs = append(daemonArgs, "--tsnet-hostname", cfg.Node.Tsnet.Hostname)
+		daemonArgs = append(daemonArgs, "--tsnet-dir", cfg.TsnetDirOrDefault())
+		if cfg.Node.Tsnet.AuthKey != "" {
+			daemonArgs = append(daemonArgs, "--tsnet-authkey", cfg.Node.Tsnet.AuthKey)
+		}
+		if cfg.Node.Tsnet.ControlURL != "" {
+			daemonArgs = append(daemonArgs, "--tsnet-controlurl", cfg.Node.Tsnet.ControlURL)
+		}
+	}
 
 	fuseDaemon := exec.CommandContext(context.Background(), selfExe, daemonArgs...)
 	fuseDaemon.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from terminal

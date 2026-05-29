@@ -435,12 +435,13 @@ Run AI agents on different machines against the same source repo without cloning
 
 ```yaml
 # ~/.phantom/config.yaml on Node A
+projects:
+  myapp:
+    path: "/home/user/myapp"
+    serve: true
 node:
   id: "node-a"
   seeds: []
-  repos:
-    - name: "myapp"
-      path: "/home/user/myapp"
 ```
 
 ```bash
@@ -473,3 +474,49 @@ echo "implement feature X" > ~/.phantom/mnt/agent1/.phantom_commit
 ```
 
 Each node runs `phantom node start` and creates its own overlay with `phantom start --repo myapp --node <addr>`. All overlays share the same read-only base on Node A. Writes are isolated per overlay — push each agent's changes to Node A independently. Files exceeding `node.sync.max_file_size_bytes` are silently skipped during push.
+
+---
+
+## Cross-Network Remote Overlay (Tailscale)
+
+Run agents on machines in different networks without VPN configuration or port forwarding. Both nodes join a [Tailscale](https://tailscale.com) tailnet.
+
+### Node A — serves the repo (e.g. in the cloud)
+
+```yaml
+# ~/.phantom/config.yaml on Node A
+projects:
+  myapp:
+    path: "/home/user/myapp"
+    serve: true
+node:
+  tsnet:
+    hostname: "phantom-node-a"
+    auth_key: "tskey-auth-xxxxx"  # or set TS_AUTHKEY env var
+```
+
+```bash
+phantom node start   # gRPC server listens on both LAN and Tailscale
+```
+
+### Node B — creates a remote overlay (e.g. on a laptop)
+
+```yaml
+# ~/.phantom/config.yaml on Node B
+node:
+  tsnet:
+    hostname: "phantom-node-b"
+    auth_key: "tskey-auth-xxxxx"
+```
+
+```bash
+phantom start --repo myapp --node 100.64.1.2:50051 --name agent1
+```
+
+The `100.64.1.2` address is Node A's Tailscale IP. Phantom detects it is a Tailscale/CGNAT address and routes the gRPC connection through the mesh automatically. No port forwarding, no TLS certificates — WireGuard encryption is handled by Tailscale.
+
+Sync works the same as LAN remote overlays:
+
+```bash
+phantom push agent1 --message "implement feature X"
+```

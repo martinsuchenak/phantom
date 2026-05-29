@@ -3,15 +3,15 @@ package commands
 import (
 	"context"
 	"fmt"
+	"time"
 
 	phantomrpc "github.com/martinsuchenak/phantom/internal/rpc"
 	"github.com/martinsuchenak/phantom/internal/remotefs"
+	phantomtsnet "github.com/martinsuchenak/phantom/internal/tsnet"
 	"github.com/paularlott/cli"
+	"tailscale.com/tsnet"
 )
 
-// NewFuseDaemonCommand returns the hidden _fuse-daemon command.
-// It is exec'd as a detached background process by processStartRemote to keep
-// a remote FUSE mount alive independently of the phantom start lifetime.
 func NewFuseDaemonCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "_fuse-daemon",
@@ -57,6 +57,22 @@ func NewFuseDaemonCommand() *cli.Command {
 				Name:  "auth-ca",
 				Usage: "CA certificate file (auth-mode=mtls)",
 			},
+			&cli.StringFlag{
+				Name:  "tsnet-hostname",
+				Usage: "Tailscale hostname (enables tsnet transport)",
+			},
+			&cli.StringFlag{
+				Name:  "tsnet-dir",
+				Usage: "Tsnet state directory",
+			},
+			&cli.StringFlag{
+				Name:  "tsnet-authkey",
+				Usage: "Tailscale auth key",
+			},
+			&cli.StringFlag{
+				Name:  "tsnet-controlurl",
+				Usage: "Custom coordination server URL",
+			},
 		},
 		Run: doFuseDaemon,
 	}
@@ -78,6 +94,24 @@ func doFuseDaemon(ctx context.Context, cmd *cli.Command) error {
 		CAFile: cmd.GetString("auth-ca"),
 	}
 
+	tsnetHostname := cmd.GetString("tsnet-hostname")
+	if tsnetHostname != "" {
+		tsnetCfg := phantomtsnet.Config{
+			Hostname:   tsnetHostname,
+			Dir:        cmd.GetString("tsnet-dir"),
+			AuthKey:    cmd.GetString("tsnet-authkey"),
+			ControlURL: cmd.GetString("tsnet-controlurl"),
+		}
+		srv, err := setupClientTsnet(ctx, tsnetCfg)
+		if err != nil {
+			return fmt.Errorf("tsnet setup: %w", err)
+		}
+		defer srv.Close()
+
+		dialer := phantomtsnet.NewSmartDialer(srv, 10*time.Second)
+		authOpts.ContextDialer = dialer.DialContext
+	}
+
 	rfs, err := remotefs.NewRemoteFSFromDial(ctx, addr, authOpts, repo)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", addr, err)
@@ -87,4 +121,22 @@ func doFuseDaemon(ctx context.Context, cmd *cli.Command) error {
 		MountPoint: mountpoint,
 		ReadyFile:  readyFile,
 	})
+}
+
+func setupClientTsnet(ctx context.Context, cfg phantomtsnet.Config) (*tsnet.Server, error) {
+	srv := &tsnet.Server{
+		Hostname:   cfg.Hostname,
+		Dir:        cfg.Dir,
+		AuthKey:    cfg.AuthKey,
+		ControlURL: cfg.ControlURL,
+		Ephemeral:  cfg.AuthKey != "",
+	}
+	if err := srv.Start(); err != nil {
+		return nil, fmt.Errorf("tsnet start: %w", err)
+	}
+	if _, err := srv.Up(ctx); err != nil {
+		_ = srv.Close()
+		return nil, fmt.Errorf("tsnet up: %w", err)
+	}
+	return srv, nil
 }

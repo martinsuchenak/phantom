@@ -7,6 +7,8 @@ A CLI tool for managing overlay filesystems to enable multiple AI agents to work
 - Cross-platform: Linux (native overlayfs + fuse-overlayfs) and macOS (unionfs-fuse)
 - Git integration: automatic branch per overlay, commit, push, merge
 - Run agents in parallel (`run-all`), sequentially (`run-chain`), or as a DAG (`run-pipeline`)
+- Remote overlays: serve repos over gRPC, mount on other machines via FUSE, push changes back
+- Gossip-based node discovery with mDNS auto-detection for zero-config LAN setups
 - Post-run hooks for linting, testing, notifications
 - Overlay snapshots, cloning, merging, comparing
 - Lock/pin overlays to prevent accidental cleanup or base drift
@@ -77,8 +79,8 @@ sudo mv phantom /usr/local/bin/
 ### Build from Source
 
 ```bash
-make build        # -> dist/phantom
-make install      # -> /usr/local/bin/phantom
+task build        # -> dist/phantom
+task install      # -> /usr/local/bin/phantom
 ```
 
 ### Prerequisites
@@ -96,6 +98,8 @@ make install      # -> /usr/local/bin/phantom
 | `run` / `run-all` / `run-chain` / `run-pipeline` | Run agents (single, parallel, sequential, or DAG pipeline) |
 | `diff` / `compare` / `conflicts` | View and compare changes |
 | `commit` / `apply` / `merge` / `sync` | Commit, apply to base, merge, sync with base |
+| `node start` / `node stop` / `node list` | Manage the node daemon (gossip + gRPC file server) |
+| `push` / `repos` | Push overlay changes to remote node, list available remote repos |
 | `watch` / `logs` / `replay` | Monitor and re-run agents |
 | `hook` | Post-run automation (lint, test, notify) |
 | `snapshot` / `export` / `clone` | Save, export, duplicate overlays |
@@ -125,14 +129,30 @@ Base Directory (read-only lower layer)
 **Linux:** Native kernel overlayfs (root) or fuse-overlayfs (rootless, auto-detected).
 **macOS:** unionfs-fuse via macFUSE or FUSE-T.
 
+### Remote Overlays
+
+Run agents on different machines against the same source repo without cloning. Node A serves its repo over gRPC; Node B mounts it via FUSE and creates a local overlay on top.
+
+```
+Node A (serves repo)                    Node B (remote overlay)
+┌──────────────────┐                    ┌──────────────────┐
+│  phantom node    │  gRPC / FUSE       │  phantom start   │
+│  start           │◄──────────────────►│  --repo myapp    │
+│                  │                    │  --node node-a    │
+│  /home/user/app  │                    │                  │
+│  (base repo)     │                    │  Overlay on top  │
+└──────────────────┘                    │  of FUSE mount   │
+                                        └──────────────────┘
+```
+
 ## Development
 
 ```bash
-make build          # Build for current platform
-make test           # Run tests
-make coverage       # Tests with coverage report
-make check          # fmt + vet + lint + test
-make build-all      # Cross-compile all platforms
+task build          # Build for current platform
+task test           # Run tests
+task coverage       # Tests with coverage report
+task check          # fmt + vet + lint + test
+task build-all      # Cross-compile all platforms
 ```
 
 ## Security

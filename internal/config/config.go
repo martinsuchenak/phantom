@@ -116,16 +116,22 @@ type NodeSync struct {
 	MaxFileSizeBytes int64 `yaml:"max_file_size_bytes"`
 }
 
+type TsnetConfig struct {
+	Hostname   string `yaml:"hostname"`
+	Dir        string `yaml:"dir"`
+	AuthKey    string `yaml:"auth_key"`
+	ControlURL string `yaml:"control_url"`
+}
+
 type NodeConfig struct {
 	ID         string     `yaml:"id"`
 	GossipPort int        `yaml:"gossip_port"`
 	GRPCPort   int        `yaml:"grpc_port"`
 	Seeds      []string   `yaml:"seeds"`
-	// Repos is the legacy field. On load it is migrated to Projects with
-	// Serve: true and then cleared. Use cfg.Projects instead.
 	Repos      []NodeRepo `yaml:"repos,omitempty"`
 	Auth       NodeAuth   `yaml:"auth"`
 	Sync       NodeSync   `yaml:"sync"`
+	Tsnet      TsnetConfig `yaml:"tsnet"`
 }
 
 // MaxTimeoutMinutes is the maximum allowed timeout value
@@ -253,6 +259,8 @@ func Load(path string) (*Config, error) {
 		cfg.Node.Repos = nil
 	}
 
+	applyEnvOverrides(cfg)
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -289,7 +297,25 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Save saves configuration to a file
+func applyEnvOverrides(cfg *Config) {
+	envStr := func(key string, dest *string) {
+		if v := os.Getenv(key); v != "" {
+			*dest = v
+		}
+	}
+
+	envStr("PHANTOM_TSNET_HOSTNAME", &cfg.Node.Tsnet.Hostname)
+	envStr("PHANTOM_TSNET_DIR", &cfg.Node.Tsnet.Dir)
+	envStr("PHANTOM_TSNET_AUTHKEY", &cfg.Node.Tsnet.AuthKey)
+	if v := os.Getenv("TS_AUTHKEY"); v != "" && cfg.Node.Tsnet.AuthKey == "" {
+		cfg.Node.Tsnet.AuthKey = v
+	}
+	envStr("PHANTOM_TSNET_CONTROLURL", &cfg.Node.Tsnet.ControlURL)
+	if v := os.Getenv("TS_CONTROL_URL"); v != "" && cfg.Node.Tsnet.ControlURL == "" {
+		cfg.Node.Tsnet.ControlURL = v
+	}
+}
+
 func (c *Config) Save(path string) error {
 	if path == "" {
 		homeDir, _ := os.UserHomeDir()
@@ -387,6 +413,13 @@ func (c *Config) GetNodePIDPath() string {
 
 func (c *Config) GetPeersStatePath() string {
 	return filepath.Join(c.StateDir, "peers.json")
+}
+
+func (c *Config) TsnetDirOrDefault() string {
+	if c.Node.Tsnet.Dir != "" {
+		return c.Node.Tsnet.Dir
+	}
+	return filepath.Join(c.StateDir, "tsnet")
 }
 
 func expandHome(path string) string {

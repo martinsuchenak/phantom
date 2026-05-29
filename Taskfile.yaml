@@ -1,0 +1,191 @@
+version: "3"
+
+vars:
+  BINARY_NAME: phantom
+  DIST_DIR: dist
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo "unknown"
+  BUILD_TIME:
+    sh: date -u '+%Y-%m-%d_%H:%M:%S'
+  BUILD_FLAGS: '-ldflags "-X main.Version={{.VERSION}} -X main.Commit={{.COMMIT}} -X main.BuildTime={{.BUILD_TIME}}"'
+
+tasks:
+  default:
+    deps: [deps, build]
+
+  build:
+    desc: Build the binary for current platform into dist/
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}} ./cmd
+      - 'echo "Built: {{.DIST_DIR}}/{{.BINARY_NAME}}"'
+
+  build-linux:
+    desc: Build for Linux (amd64, arm64)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-linux-amd64 ./cmd
+      - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-linux-arm64 ./cmd
+
+  build-darwin:
+    desc: Build for macOS (amd64, arm64)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-darwin-amd64 ./cmd
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-darwin-arm64 ./cmd
+
+  build-all:
+    desc: Build for all platforms (linux/darwin, amd64/arm64)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - echo "Building for all platforms..."
+      - echo "  -> linux/amd64"
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-linux-amd64 ./cmd
+      - echo "  -> linux/arm64"
+      - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-linux-arm64 ./cmd
+      - echo "  -> darwin/amd64"
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-darwin-amd64 ./cmd
+      - echo "  -> darwin/arm64"
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-darwin-arm64 ./cmd
+      - echo "Done!"
+      - ls -lh {{.DIST_DIR}}/
+
+  build-platform:
+    desc: "Build for a specific platform (usage: task build-platform GOOS=linux GOARCH=arm64)"
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - echo "Building for {{.GOOS}}/{{.GOARCH}}..."
+      - CGO_ENABLED=0 GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build {{.BUILD_FLAGS}} -o {{.DIST_DIR}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}} ./cmd
+
+  dist:
+    desc: Create distribution with checksums
+    deps: [clean, build-all]
+    cmds:
+      - echo "Generating checksums..."
+      - cd {{.DIST_DIR}} && shasum -a 256 phantom-* > checksums.txt
+      - echo "Distribution created in {{.DIST_DIR}}/"
+      - cat {{.DIST_DIR}}/checksums.txt
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - go clean
+      - rm -rf {{.DIST_DIR}}
+
+  install:
+    desc: Install the binary to /usr/local/bin
+    deps: [build]
+    cmds:
+      - install -m 755 {{.DIST_DIR}}/{{.BINARY_NAME}} /usr/local/bin/
+
+  uninstall:
+    desc: Uninstall the binary from /usr/local/bin
+    cmds:
+      - rm -f /usr/local/bin/{{.BINARY_NAME}}
+
+  deps:
+    desc: Download and tidy dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  test-short:
+    desc: Run tests in short mode
+    cmds:
+      - go test -short ./...
+
+  coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go test -v -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - 'echo "Coverage report: coverage.html"'
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - which golangci-lint > /dev/null || (echo "golangci-lint not found, please install it https://golangci-lint.run/usage/install/" && exit 1)
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format code with gofmt
+    cmds:
+      - gofmt -s -w .
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  check:
+    desc: Run all checks (fmt, vet, lint, test)
+    deps: [fmt, vet, lint, test]
+
+  dev:
+    desc: Development build
+    deps: [deps, build]
+    cmds:
+      - "{{.DIST_DIR}}/{{.BINARY_NAME}} --help"
+
+  run:
+    desc: "Build and run with arguments (usage: task run -- start /path)"
+    deps: [build]
+    cmds:
+      - "{{.DIST_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}"
+
+  release:
+    desc: Create a release using goreleaser
+    cmds:
+      - which goreleaser > /dev/null || (echo "goreleaser not found, please install it https://goreleaser.com/install/" && exit 1)
+      - goreleaser release --clean
+
+  release-snapshot:
+    desc: Create a snapshot release (no publish)
+    cmds:
+      - which goreleaser > /dev/null || (echo "goreleaser not found, please install it https://goreleaser.com/install/" && exit 1)
+      - goreleaser release --snapshot --clean
+
+  release-check:
+    desc: Validate goreleaser config
+    cmds:
+      - which goreleaser > /dev/null || (echo "goreleaser not found, please install it https://goreleaser.com/install/" && exit 1)
+      - goreleaser check
+
+  push-tag:
+    desc: "Create and push a git tag (usage: task push-tag TAG=v1.0.0)"
+    cmds:
+      - echo "Creating tag {{.TAG}}..."
+      - git tag -a {{.TAG}} -m "Release {{.TAG}}"
+      - echo "Pushing tag {{.TAG}}..."
+      - git push origin {{.TAG}}
+      - echo "Tag {{.TAG}} pushed. GitHub Actions will create the release."
+
+  proto:
+    desc: Generate Go code from .proto definitions
+    cmds:
+      - |
+        protoc \
+          --go_out=. \
+          --go_opt=paths=source_relative \
+          --go-grpc_out=. \
+          --go-grpc_opt=paths=source_relative \
+          internal/rpc/proto/file.proto
+
+  linux:
+    desc: Alias for build-linux
+    deps: [build-linux]
+
+  darwin:
+    desc: Alias for build-darwin
+    deps: [build-darwin]
+
+  all-platforms:
+    desc: Alias for build-all
+    deps: [build-all]
