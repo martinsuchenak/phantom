@@ -123,4 +123,3 @@ func TestParsePeer_ExtraUnknownFields(t *testing.T) {
 		t.Errorf("ID: got %q", peer.ID)
 	}
 }
-

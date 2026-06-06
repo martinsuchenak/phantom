@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/martinsuchenak/phantom/internal/remotefs"
-	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/rpc"
+	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	phantomsync "github.com/martinsuchenak/phantom/internal/sync"
 )
 

@@ -87,7 +87,7 @@ task install      # -> /usr/local/bin/phantom
 
 **Linux:** Native overlayfs (requires root) or fuse-overlayfs for rootless (`apt install fuse-overlayfs`). Auto-detected.
 
-**macOS:** [macFUSE](https://osxfuse.github.io/) or [FUSE-T](https://github.com/macos-fuse-t/fuse-t) + [unionfs-fuse](https://github.com/rpodgorny/unionfs-fuse).
+**macOS:** [macFUSE](https://osxfuse.github.io/) + [unionfs-fuse](https://github.com/rpodgorny/unionfs-fuse). macFUSE 5.2.0+ on macOS 15.4+ supports a kext-free FSKit backend via `darwin.use_fskit: true`; the mount path must be under `/Volumes` (FSKit rejects other paths and macFUSE falls back to kext silently). Note: FUSE-T is not supported — remote overlays use `go-fuse` which requires the macFUSE kernel device.
 
 ## Commands Overview
 
@@ -127,7 +127,7 @@ Base Directory (read-only lower layer)
 ```
 
 **Linux:** Native kernel overlayfs (root) or fuse-overlayfs (rootless, auto-detected).
-**macOS:** unionfs-fuse via macFUSE or FUSE-T.
+**macOS:** unionfs-fuse via macFUSE.
 
 ### Remote Overlays
 

@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/gossip"
 	"github.com/paularlott/gossip/codec"
 	"github.com/paularlott/logger"
-	"github.com/martinsuchenak/phantom/pkg/api"
 )
 
 type Meta struct {
@@ -23,14 +23,14 @@ type Meta struct {
 }
 
 type Config struct {
-	ID           string
-	BindAddr     string
+	ID            string
+	BindAddr      string
 	AdvertiseAddr string
-	GRPCAddr     string
-	Seeds        []string
-	Repos        []string
-	PIDFile      string
-	Logger       logger.Logger
+	GRPCAddr      string
+	Seeds         []string
+	Repos         []string
+	PIDFile       string
+	Logger        logger.Logger
 	// RepoUpdateCh receives updated repo slices when the served project list
 	// changes at runtime. A nil channel disables live updates.
 	RepoUpdateCh <-chan []string
@@ -62,7 +62,7 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
 		if err := os.WriteFile(cfg.PIDFile, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0600); err != nil {
 			return fmt.Errorf("write pid file: %w", err)
 		}
-		defer os.Remove(cfg.PIDFile)
+		defer func() { _ = os.Remove(cfg.PIDFile) }()
 	}
 
 	gossipCfg := gossip.DefaultConfig()

@@ -3,8 +3,8 @@ package remotefs
 import (
 	"context"
 
-	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/rpc"
+	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 )
 
 type RemoteFS struct {

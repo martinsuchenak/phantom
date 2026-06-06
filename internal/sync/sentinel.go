@@ -17,7 +17,7 @@ func Watch(ctx context.Context, mountPoint string, onTrigger func(commitMessage 
 	if err != nil {
 		return
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	_ = watcher.Add(mountPoint)
 
@@ -25,7 +25,7 @@ func Watch(ctx context.Context, mountPoint string, onTrigger func(commitMessage 
 
 	if data, err := os.ReadFile(sentinel); err == nil {
 		msg := strings.TrimSpace(string(data))
-		os.Remove(sentinel)
+		_ = os.Remove(sentinel)
 		onTrigger(msg)
 	}
 
@@ -48,7 +48,7 @@ func Watch(ctx context.Context, mountPoint string, onTrigger func(commitMessage 
 				continue
 			}
 			msg := strings.TrimSpace(string(data))
-			os.Remove(sentinel)
+			_ = os.Remove(sentinel)
 			onTrigger(msg)
 		case _, ok := <-watcher.Errors:
 			if !ok {

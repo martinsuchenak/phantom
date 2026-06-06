@@ -30,6 +30,7 @@ darwin:
   unionfs_path: ""               # auto-detect unionfs-fuse
   fuse_options:
     - "cow"                      # copy-on-write mode
+  use_fskit: false               # use macFUSE FSKit backend (requires macFUSE ≥ 5.2.0 and macOS 15.4+; mount path must be under /Volumes)
 
 linux:
   use_fuse: false                # auto-detects if not root; true to force
@@ -396,8 +397,53 @@ Force with `linux.use_fuse: true` in config.
 
 ### macOS
 
-Requires macFUSE or FUSE-T + unionfs-fuse:
+Requires macFUSE + unionfs-fuse. Note: FUSE-T is not supported (remote overlays use go-fuse which requires the macFUSE kernel device).
 
 ```
 unionfs-fuse -o cow upperdir=RW:lowerdir=RO /mnt/point
 ```
+
+#### FSKit backend (macFUSE ≥ 5.2.0)
+
+macFUSE 5.2.0 (released April 2026) introduced an FSKit-based mount path that runs entirely in user space, eliminating the need for a kernel extension. When enabled, phantom passes `-o backend=fskit` to unionfs-fuse, which macFUSE intercepts and routes through FSKit instead of the VFS kext.
+
+**Requirements:**
+- macFUSE ≥ 5.2.0
+- macOS 15.4 or later — Intel and Apple Silicon both supported
+
+**Critical — mount path must be under `/Volumes`:**
+
+macOS FSKit requires the mount point to be under `/Volumes`. Phantom's default mount path (`~/.phantom/mnt/`) is outside `/Volumes`, so macFUSE will silently fall back to the kext backend even if `use_fskit: true` is set. You must set a custom mount path:
+
+```yaml
+paths:
+  mounts: "/Volumes/phantom"
+
+darwin:
+  use_fskit: true
+```
+
+**Enable in config (with custom mount path):**
+
+```bash
+sudo mkdir -p /Volumes/phantom
+```
+
+```yaml
+paths:
+  mounts: "/Volumes/phantom"
+
+darwin:
+  use_fskit: true
+```
+
+**Known limitations (as of macFUSE 5.2.0):**
+- I/O performance is lower than the VFS/kext backend
+- Mount points outside `/Volumes` silently fall back to kext — this is why FSKit may appear not to be taking effect
+- Sparse files are not supported — allocation size reflects actual file size
+- Files can only be opened in exclusive read/write mode
+- `fuse_context_t` (user/group context per request) is not available
+- The FSKit API may change in future macFUSE releases
+- **Remote overlays (`phantom start --repo`) are unaffected** — they use `go-fuse` which communicates with macFUSE via `/dev/macfuse` and always requires the kext; FSKit is not supported on that path
+
+If you see mount failures with `use_fskit: true`, set it back to `false` to fall back to the VFS/kext path.

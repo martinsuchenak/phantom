@@ -62,7 +62,7 @@ func TestLoadAndSaveConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -163,7 +163,7 @@ func TestConfigWithDarwinSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -194,7 +194,7 @@ func TestConfigWithAgentEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -217,7 +217,6 @@ func TestConfigWithAgentEnv(t *testing.T) {
 		t.Errorf("expected 2 agent env vars, got %d", len(loaded.AgentEnv))
 	}
 }
-
 
 func TestConfigValidation(t *testing.T) {
 	tests := []struct {
@@ -369,10 +368,10 @@ func TestTsnetDirOrDefault(t *testing.T) {
 }
 
 func TestTsnetEnvOverrides(t *testing.T) {
-	os.Setenv("PHANTOM_TSNET_HOSTNAME", "test-node")
-	defer os.Unsetenv("PHANTOM_TSNET_HOSTNAME")
-	os.Setenv("TS_AUTHKEY", "tskey-test")
-	defer os.Unsetenv("TS_AUTHKEY")
+	_ = os.Setenv("PHANTOM_TSNET_HOSTNAME", "test-node")
+	defer func() { _ = os.Unsetenv("PHANTOM_TSNET_HOSTNAME") }()
+	_ = os.Setenv("TS_AUTHKEY", "tskey-test")
+	defer func() { _ = os.Unsetenv("TS_AUTHKEY") }()
 
 	cfg := DefaultConfig()
 	applyEnvOverrides(cfg)
@@ -386,8 +385,8 @@ func TestTsnetEnvOverrides(t *testing.T) {
 }
 
 func TestTsnetAuthKeyFallback(t *testing.T) {
-	os.Setenv("TS_AUTHKEY", "fallback-key")
-	defer os.Unsetenv("TS_AUTHKEY")
+	_ = os.Setenv("TS_AUTHKEY", "fallback-key")
+	defer func() { _ = os.Unsetenv("TS_AUTHKEY") }()
 
 	cfg := DefaultConfig()
 	applyEnvOverrides(cfg)
@@ -398,10 +397,10 @@ func TestTsnetAuthKeyFallback(t *testing.T) {
 }
 
 func TestTsnetAuthKeyPriority(t *testing.T) {
-	os.Setenv("PHANTOM_TSNET_AUTHKEY", "primary-key")
-	defer os.Unsetenv("PHANTOM_TSNET_AUTHKEY")
-	os.Setenv("TS_AUTHKEY", "fallback-key")
-	defer os.Unsetenv("TS_AUTHKEY")
+	_ = os.Setenv("PHANTOM_TSNET_AUTHKEY", "primary-key")
+	defer func() { _ = os.Unsetenv("PHANTOM_TSNET_AUTHKEY") }()
+	_ = os.Setenv("TS_AUTHKEY", "fallback-key")
+	defer func() { _ = os.Unsetenv("TS_AUTHKEY") }()
 
 	cfg := DefaultConfig()
 	applyEnvOverrides(cfg)
@@ -429,7 +428,7 @@ func TestConfigFilePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -448,7 +447,6 @@ func TestConfigFilePermissions(t *testing.T) {
 		t.Errorf("expected file permissions 0600, got %v", info.Mode().Perm())
 	}
 }
-
 
 func TestGetLogsPath(t *testing.T) {
 	cfg := DefaultConfig()
@@ -499,10 +497,10 @@ func TestLoadInvalidYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	os.WriteFile(configPath, []byte("{{invalid yaml"), 0644)
+	_ = os.WriteFile(configPath, []byte("{{invalid yaml"), 0644)
 
 	_, err = Load(configPath)
 	if err == nil {
@@ -515,11 +513,11 @@ func TestLoadInvalidConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	// Valid YAML but invalid config (bad log level)
-	os.WriteFile(configPath, []byte("logging:\n  level: invalid_level\n"), 0644)
+	_ = os.WriteFile(configPath, []byte("logging:\n  level: invalid_level\n"), 0644)
 
 	_, err = Load(configPath)
 	if err == nil {
@@ -532,7 +530,7 @@ func TestSaveCreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := DefaultConfig()
 	configPath := filepath.Join(tmpDir, "subdir", "config.yaml")
@@ -555,7 +553,7 @@ func TestProjectUnmarshalLegacyString(t *testing.T) {
   myapp: /path/to/myapp
   other: /path/to/other
 `
-	os.WriteFile(configPath, []byte(content), 0644)
+	_ = os.WriteFile(configPath, []byte(content), 0644)
 
 	cfg, err := Load(configPath)
 	if err != nil {
@@ -582,7 +580,7 @@ func TestProjectUnmarshalNewFormat(t *testing.T) {
   other:
     path: /path/to/other
 `
-	os.WriteFile(configPath, []byte(content), 0644)
+	_ = os.WriteFile(configPath, []byte(content), 0644)
 
 	cfg, err := Load(configPath)
 	if err != nil {
@@ -616,7 +614,7 @@ func TestNodeReposMigratedToProjects(t *testing.T) {
     - name: myapp
       path: /srv/myapp
 `
-	os.WriteFile(configPath, []byte(content), 0644)
+	_ = os.WriteFile(configPath, []byte(content), 0644)
 
 	cfg, err := Load(configPath)
 	if err != nil {
@@ -654,7 +652,7 @@ node:
     - name: myapp
       path: /srv/myapp
 `
-	os.WriteFile(configPath, []byte(content), 0644)
+	_ = os.WriteFile(configPath, []byte(content), 0644)
 
 	cfg, err := Load(configPath)
 	if err != nil {
@@ -786,7 +784,7 @@ func TestConfigPathsExpansion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "config.yaml")
 	content := `state_dir: "~/phantom-test"
@@ -799,7 +797,7 @@ logging:
   level: info
   file: "~/phantom-test/phantom.log"
 `
-	os.WriteFile(configPath, []byte(content), 0644)
+	_ = os.WriteFile(configPath, []byte(content), 0644)
 
 	cfg, err := Load(configPath)
 	if err != nil {

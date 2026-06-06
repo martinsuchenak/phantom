@@ -36,6 +36,12 @@ func (n *RemoteNode) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.Att
 }
 
 func (n *RemoteNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	// go-fuse's pollHack opens this file on the root to synchronise mount
+	// readiness. Return EPERM so pollHack treats it as a sandbox restriction
+	// and skips gracefully, without making a gRPC call.
+	if name == ".go-fuse-epoll-hack" {
+		return nil, syscall.EPERM
+	}
 	childPath := joinPath(n.path, name)
 	info, err := n.rfs.GetAttr(ctx, childPath)
 	if err != nil {

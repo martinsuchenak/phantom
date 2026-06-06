@@ -45,7 +45,7 @@ func TestDualListenerAcceptFromLocal(t *testing.T) {
 	}
 
 	dl := NewDualListener(local, fakeRemote)
-	defer dl.Close()
+	defer func() { _ = dl.Close() }()
 
 	conn, err := net.Dial("tcp", local.Addr().String())
 	if err != nil {
@@ -95,11 +95,11 @@ func TestDualListenerAddr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer local.Close()
-	defer fakeRemote.Close()
+	defer func() { _ = local.Close() }()
+	defer func() { _ = fakeRemote.Close() }()
 
 	dl := NewDualListener(local, fakeRemote)
-	defer dl.Close()
+	defer func() { _ = dl.Close() }()
 
 	if dl.Addr().String() != local.Addr().String() {
 		t.Errorf("expected Addr() to return local addr %s, got %s", local.Addr(), dl.Addr())
@@ -120,7 +120,7 @@ func TestSmartDialerNonCGNATUsesFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 
 	dialer := NewSmartDialer(nil, 5*time.Second)
 	ctx := context.Background()

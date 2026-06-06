@@ -746,7 +746,7 @@ phantom completion powershell | Out-String | Invoke-Expression
 | `NOT_FOUND` | Overlay doesn't exist |
 | `ALREADY_EXISTS` | Overlay name already in use |
 | `GIT_FAILED` | Git operation failed |
-| `FUSE_NOT_FOUND` | macFUSE/FUSE-T not installed |
+| `FUSE_NOT_FOUND` | macFUSE not installed (macOS) |
 | `PERMISSION_DENIED` | Insufficient permissions |
 | `INVALID_CONFIG` | Configuration validation failed |
 | `OVERLAY_NOT_MOUNTED` | Overlay exists but is not mounted |

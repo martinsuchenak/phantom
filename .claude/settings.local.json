@@ -10,7 +10,17 @@
       "Bash(make help:*)",
       "Bash(make dist:*)",
       "Bash(find:*)",
-      "Bash(./phantom:*)"
+      "Bash(./phantom:*)",
+      "Read(//private/tmp/**)",
+      "Bash(GOPATH=/tmp/gofusecheck go install github.com/hanwen/go-fuse/v2@v2.10.1)",
+      "Read(//tmp/gofusecheck/pkg/mod/github.com/hanwen/go-fuse/v2@v2.10.1/fuse/**)",
+      "Bash(curl -s \"https://proxy.golang.org/github.com/hanwen/go-fuse/v2/@v/v2.10.1.mod\")",
+      "Bash(task lint *)",
+      "Bash(sed -i '' 's/^\\\\tos\\\\.MkdirAll\\(\\\\\\(.*\\\\\\)\\)/\\\\t_ = os.MkdirAll\\(\\\\1\\)/' /Users/martin/Development/personal/phantom/internal/commands/apply_protection_test.go)",
+      "Bash(sed -i '' 's/^\\\\tstore\\\\.Save\\(/\\\\t_ = store.Save\\(/' /Users/martin/Development/personal/phantom/internal/commands/commands_test.go)",
+      "Bash(sed -i '' 's/^\\\\t\\\\tfilepath\\\\.Walk\\(\\\\\\(.*\\\\\\)\\)/\\\\t\\\\t_ = filepath.Walk\\(\\\\1\\)/' /Users/martin/Development/personal/phantom/internal/commands/conflicts_detect_test.go)",
+      "Bash(sed -i '' 's/^\\\\tfilepath\\\\.Walk\\(\\\\\\(.*\\\\\\)\\)/\\\\t_ = filepath.Walk\\(\\\\1\\)/' /Users/martin/Development/personal/phantom/internal/commands/conflicts_detect_test.go)",
+      "Bash(sed -i '' 's/^\\\\tdefer os\\\\.RemoveAll\\(\\\\\\(.*\\\\\\)\\)/\\\\tdefer func\\(\\) { _ = os.RemoveAll\\(\\\\1\\) }\\(\\)/' /Users/martin/Development/personal/phantom/internal/config/config_test.go)"
     ]
   }
 }

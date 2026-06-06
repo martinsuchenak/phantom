@@ -38,13 +38,13 @@ func (p *Project) UnmarshalYAML(value *yaml.Node) error {
 
 // Config represents the application configuration
 type Config struct {
-	StateDir string   `yaml:"state_dir"`
-	Paths    Paths    `yaml:"paths"`
-	Logging  Logging  `yaml:"logging"`
-	Overlay  Overlay  `yaml:"overlay"`
-	Git      Git      `yaml:"git"`
-	Darwin   Darwin   `yaml:"darwin"`
-	Linux    Linux    `yaml:"linux"`
+	StateDir string             `yaml:"state_dir"`
+	Paths    Paths              `yaml:"paths"`
+	Logging  Logging            `yaml:"logging"`
+	Overlay  Overlay            `yaml:"overlay"`
+	Git      Git                `yaml:"git"`
+	Darwin   Darwin             `yaml:"darwin"`
+	Linux    Linux              `yaml:"linux"`
 	Agent    Agent              `yaml:"agent"`
 	AgentEnv []string           `yaml:"agent_env"`
 	Projects map[string]Project `yaml:"projects"`
@@ -82,6 +82,12 @@ type Git struct {
 type Darwin struct {
 	UnionFSPath string   `yaml:"unionfs_path"`
 	FUSEOptions []string `yaml:"fuse_options"`
+	// UseFSKit passes backend=fskit to macFUSE, enabling the user-space FSKit
+	// path instead of the VFS kernel extension. Requires macFUSE ≥ 5.2.0 and
+	// macOS 15.4+. The mount path (paths.mounts) must be under /Volumes;
+	// FSKit rejects mount points outside /Volumes and macFUSE falls back to
+	// the kext backend silently.
+	UseFSKit bool `yaml:"use_fskit"`
 }
 
 // Linux specific configuration
@@ -124,13 +130,13 @@ type TsnetConfig struct {
 }
 
 type NodeConfig struct {
-	ID         string     `yaml:"id"`
-	GossipPort int        `yaml:"gossip_port"`
-	GRPCPort   int        `yaml:"grpc_port"`
-	Seeds      []string   `yaml:"seeds"`
-	Repos      []NodeRepo `yaml:"repos,omitempty"`
-	Auth       NodeAuth   `yaml:"auth"`
-	Sync       NodeSync   `yaml:"sync"`
+	ID         string      `yaml:"id"`
+	GossipPort int         `yaml:"gossip_port"`
+	GRPCPort   int         `yaml:"grpc_port"`
+	Seeds      []string    `yaml:"seeds"`
+	Repos      []NodeRepo  `yaml:"repos,omitempty"`
+	Auth       NodeAuth    `yaml:"auth"`
+	Sync       NodeSync    `yaml:"sync"`
 	Tsnet      TsnetConfig `yaml:"tsnet"`
 }
 

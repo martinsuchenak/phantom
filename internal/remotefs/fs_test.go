@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/remotefs"
+	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 )
 
 type mockClient struct {

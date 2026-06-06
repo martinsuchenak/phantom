@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -68,6 +69,41 @@ func (s *FileServer) ListRepos(_ context.Context, _ *proto.ListReposRequest) (*p
 	return &proto.ListReposResponse{Repos: infos}, nil
 }
 
+// unixMode converts a Go os.FileMode to a POSIX mode_t value suitable for
+// use in FUSE attr responses. Go's FileMode bit positions differ from POSIX:
+// e.g. ModeDir = 1<<31, whereas S_IFDIR = 0x4000.
+func unixMode(m os.FileMode) uint32 {
+	out := uint32(m.Perm())
+	switch {
+	case m.IsDir():
+		out |= syscall.S_IFDIR
+	case m&os.ModeSymlink != 0:
+		out |= syscall.S_IFLNK
+	case m&os.ModeDevice != 0:
+		if m&os.ModeCharDevice != 0 {
+			out |= syscall.S_IFCHR
+		} else {
+			out |= syscall.S_IFBLK
+		}
+	case m&os.ModeNamedPipe != 0:
+		out |= syscall.S_IFIFO
+	case m&os.ModeSocket != 0:
+		out |= syscall.S_IFSOCK
+	default:
+		out |= syscall.S_IFREG
+	}
+	if m&os.ModeSetuid != 0 {
+		out |= syscall.S_ISUID
+	}
+	if m&os.ModeSetgid != 0 {
+		out |= syscall.S_ISGID
+	}
+	if m&os.ModeSticky != 0 {
+		out |= syscall.S_ISVTX
+	}
+	return out
+}
+
 func (s *FileServer) Stat(_ context.Context, req *proto.StatRequest) (*proto.StatResponse, error) {
 	base, err := s.repoPath(req.Repo)
 	if err != nil {
@@ -89,7 +125,7 @@ func (s *FileServer) Stat(_ context.Context, req *proto.StatRequest) (*proto.Sta
 		IsDir:       info.IsDir(),
 		Size:        info.Size(),
 		ModTimeUnix: info.ModTime().Unix(),
-		Mode:        uint32(info.Mode()),
+		Mode:        unixMode(info.Mode()),
 	}, nil
 }
 
@@ -117,7 +153,7 @@ func (s *FileServer) ReadDir(_ context.Context, req *proto.ReadDirRequest) (*pro
 			IsDir:       e.IsDir(),
 			Size:        info.Size(),
 			ModTimeUnix: info.ModTime().Unix(),
-			Mode:        uint32(info.Mode()),
+			Mode:        unixMode(info.Mode()),
 		})
 	}
 	return resp, nil
@@ -136,7 +172,7 @@ func (s *FileServer) Read(req *proto.ReadRequest, stream proto.FileService_ReadS
 	if err != nil {
 		return status.Errorf(codes.Internal, "open: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if req.Offset > 0 {
 		if _, err := f.Seek(req.Offset, io.SeekStart); err != nil {

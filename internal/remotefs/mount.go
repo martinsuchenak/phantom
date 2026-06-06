@@ -4,20 +4,19 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
 
+// MountOpts configures a FUSE mount for a RemoteFS.
 type MountOpts struct {
 	MountPoint string
 	AllowOther bool
-	// ReadyCh is closed once the FUSE server has successfully mounted and is
-	// ready to serve requests. Optional; ignored if nil.
+	// ReadyCh is closed once the FUSE server has successfully mounted.
 	ReadyCh chan<- struct{}
-	// ReadyFile is a file path that is written once the mount is ready.
-	// Used for cross-process readiness signalling (e.g. _fuse-daemon).
-	// Optional; ignored if empty.
+	// ReadyFile is written once the mount is ready (cross-process signalling).
 	ReadyFile string
 }
 
@@ -25,6 +24,10 @@ func Mount(ctx context.Context, rfs *RemoteFS, opts MountOpts) error {
 	if err := os.MkdirAll(opts.MountPoint, 0755); err != nil {
 		return fmt.Errorf("create mount point %s: %w", opts.MountPoint, err)
 	}
+
+	// Clear any stale FUSE mount left by a previous crashed daemon.
+	// This is a no-op when nothing is mounted.
+	_ = exec.Command("umount", "-f", opts.MountPoint).Run()
 
 	root := newRootNode(rfs)
 	fuseOpts := &fs.Options{
@@ -35,8 +38,6 @@ func Mount(ctx context.Context, rfs *RemoteFS, opts MountOpts) error {
 		},
 	}
 
-	// fs.Mount blocks until the kernel acknowledges the mount, so the server
-	// is ready to serve as soon as this returns without error.
 	server, err := fs.Mount(opts.MountPoint, root, fuseOpts)
 	if err != nil {
 		return fmt.Errorf("fuse mount %s: %w", opts.MountPoint, err)

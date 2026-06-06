@@ -58,7 +58,7 @@ func startTestNode(t *testing.T, ctx context.Context, id string, gossipPort int,
 }
 
 type testLogger struct {
-	t    *testing.T
+	t      *testing.T
 	prefix string
 }
 
@@ -83,8 +83,8 @@ func (l *testLogger) Fatal(msg string, args ...any) {
 	l.t.Fatalf("[FATAL][%s] %s", l.prefix, fmt.Sprintf(msg, args...))
 }
 func (l *testLogger) With(string, any) logger.Logger { return l }
-func (l *testLogger) WithError(error) logger.Logger   { return l }
-func (l *testLogger) WithGroup(string) logger.Logger  { return l }
+func (l *testLogger) WithError(error) logger.Logger  { return l }
+func (l *testLogger) WithGroup(string) logger.Logger { return l }
 
 func TestGossip_TwoNodesPeerDiscovery(t *testing.T) {
 	regA := node.NewRegistry()

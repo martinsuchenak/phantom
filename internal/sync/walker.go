@@ -84,8 +84,5 @@ func WalkUpperDir(upperDir string, maxFileSizeBytes int64) ([]Change, error) {
 func isOpaqueDir(path string) bool {
 	var val [1]byte
 	_, err := unix.Getxattr(path, "trusted.overlay.opaque", val[:0])
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }

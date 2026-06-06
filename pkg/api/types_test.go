@@ -145,11 +145,11 @@ func TestRunOptions(t *testing.T) {
 
 func TestOverlayError(t *testing.T) {
 	tests := []struct {
-		name       string
-		err        *OverlayError
-		expected   string
-		hasCause   bool
-		errorCode  string
+		name      string
+		err       *OverlayError
+		expected  string
+		hasCause  bool
+		errorCode string
 	}{
 		{
 			name:      "error without cause",
@@ -159,11 +159,11 @@ func TestOverlayError(t *testing.T) {
 			errorCode: ErrNotFound,
 		},
 		{
-			name:       "error with cause",
-			err:        NewError(ErrMountFailed, "mount failed", errors.New("permission denied")),
-			expected:   "MOUNT_FAILED: mount failed: permission denied",
-			hasCause:   true,
-			errorCode:  ErrMountFailed,
+			name:      "error with cause",
+			err:       NewError(ErrMountFailed, "mount failed", errors.New("permission denied")),
+			expected:  "MOUNT_FAILED: mount failed: permission denied",
+			hasCause:  true,
+			errorCode: ErrMountFailed,
 		},
 		{
 			name:      "git error",

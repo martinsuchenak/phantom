@@ -18,7 +18,7 @@ func TestStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir)
 	if err != nil {
@@ -173,7 +173,7 @@ func TestStoreWithPID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir)
 	if err != nil {
@@ -208,7 +208,7 @@ func TestStoreFileFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, err := NewStore(tmpDir)
 	if err != nil {
@@ -253,13 +253,12 @@ func TestStoreFileFormat(t *testing.T) {
 	}
 }
 
-
 func TestLoadEmptyName(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "phantom-state-empty-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, _ := NewStore(tmpDir)
 	_, err = store.Load("")
@@ -273,7 +272,7 @@ func TestDeleteEmptyName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, _ := NewStore(tmpDir)
 	err = store.Delete("")
@@ -287,7 +286,7 @@ func TestDeleteNonExistent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, _ := NewStore(tmpDir)
 	err = store.Delete("nonexistent")
@@ -301,12 +300,12 @@ func TestLoadAllWithInvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, _ := NewStore(tmpDir)
 
 	// Write a valid overlay
-	store.Save(&api.Overlay{
+	_ = store.Save(&api.Overlay{
 		Name:      "valid",
 		BaseDir:   "/base",
 		CreatedAt: time.Now(),
@@ -314,10 +313,10 @@ func TestLoadAllWithInvalidJSON(t *testing.T) {
 
 	// Write invalid JSON file
 	stateDir := filepath.Join(tmpDir, "state")
-	os.WriteFile(filepath.Join(stateDir, "invalid.json"), []byte("{bad json"), 0600)
+	_ = os.WriteFile(filepath.Join(stateDir, "invalid.json"), []byte("{bad json"), 0600)
 
 	// Write a non-json file (should be skipped)
-	os.WriteFile(filepath.Join(stateDir, "readme.txt"), []byte("skip me"), 0600)
+	_ = os.WriteFile(filepath.Join(stateDir, "readme.txt"), []byte("skip me"), 0600)
 
 	overlays, err := store.LoadAll()
 	if err != nil {
@@ -335,7 +334,7 @@ func TestLoadAllEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	store, _ := NewStore(tmpDir)
 	overlays, err := store.LoadAll()

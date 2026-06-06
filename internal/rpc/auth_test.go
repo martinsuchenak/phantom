@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/rpc"
+	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 )
 
 func setupServerWithAuth(t *testing.T, opts rpc.AuthOptions) (proto.FileServiceClient, func()) {
@@ -21,7 +21,7 @@ func setupServerWithAuth(t *testing.T, opts rpc.AuthOptions) (proto.FileServiceC
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer(grpc.UnaryInterceptor(rpc.UnaryAuthInterceptor(opts)))
 	proto.RegisterFileServiceServer(srv, rpc.NewFileServer(map[string]string{}))
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough://bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -32,7 +32,7 @@ func setupServerWithAuth(t *testing.T, opts rpc.AuthOptions) (proto.FileServiceC
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	return proto.NewFileServiceClient(conn), func() { conn.Close(); srv.Stop() }
+	return proto.NewFileServiceClient(conn), func() { _ = conn.Close(); srv.Stop() }
 }
 
 func TestAuthNone(t *testing.T) {

@@ -51,12 +51,12 @@ func (s *Store) Save(overlay *api.Overlay) error {
 	if err != nil {
 		return fmt.Errorf("failed to open state file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := lockFile(f); err != nil {
 		return fmt.Errorf("failed to lock state file: %w", err)
 	}
-	defer unlockFile(f)
+	defer func() { _ = unlockFile(f) }()
 
 	if _, err := f.Write(data); err != nil {
 		return fmt.Errorf("failed to write overlay state: %w", err)
@@ -79,12 +79,12 @@ func (s *Store) Load(name string) (*api.Overlay, error) {
 		}
 		return nil, fmt.Errorf("failed to open overlay state: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := lockFile(f); err != nil {
 		return nil, fmt.Errorf("failed to lock state file: %w", err)
 	}
-	defer unlockFile(f)
+	defer func() { _ = unlockFile(f) }()
 
 	data, err := os.ReadFile(path)
 	if err != nil {

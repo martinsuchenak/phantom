@@ -7,23 +7,23 @@ import (
 
 // Overlay represents a single overlay filesystem instance
 type Overlay struct {
-	Name         string    `json:"name" yaml:"name"`
-	BaseDir      string    `json:"base_dir" yaml:"base_dir"`
-	MountPoint   string    `json:"mount_point" yaml:"mount_point"`
-	UpperDir     string    `json:"upper_dir" yaml:"upper_dir"`
-	WorkDir      string    `json:"work_dir" yaml:"work_dir"` // Linux only
-	Branch       string    `json:"branch" yaml:"branch"`
-	Persistent   bool      `json:"persistent" yaml:"persistent"`
-	Locked       bool      `json:"locked,omitempty" yaml:"locked,omitempty"`
-	PinnedCommit string    `json:"pinned_commit,omitempty" yaml:"pinned_commit,omitempty"`
-	CreatedAt    time.Time `json:"created_at" yaml:"created_at"`
-	PID          int       `json:"pid,omitempty" yaml:"pid,omitempty"`           // macOS unionfs / Linux fuse-overlayfs process
-	UseFuse      bool      `json:"use_fuse,omitempty" yaml:"use_fuse,omitempty"` // Linux: whether fuse-overlayfs was used
-	Remote          bool   `json:"remote,omitempty" yaml:"remote,omitempty"`
-	RemoteNode      string `json:"remote_node,omitempty" yaml:"remote_node,omitempty"`
-	RemoteRepo      string `json:"remote_repo,omitempty" yaml:"remote_repo,omitempty"`
-	RemoteMountPath string `json:"remote_mount_path,omitempty" yaml:"remote_mount_path,omitempty"`
-	FUSEPid         int    `json:"fuse_pid,omitempty" yaml:"fuse_pid,omitempty"`
+	Name            string    `json:"name" yaml:"name"`
+	BaseDir         string    `json:"base_dir" yaml:"base_dir"`
+	MountPoint      string    `json:"mount_point" yaml:"mount_point"`
+	UpperDir        string    `json:"upper_dir" yaml:"upper_dir"`
+	WorkDir         string    `json:"work_dir" yaml:"work_dir"` // Linux only
+	Branch          string    `json:"branch" yaml:"branch"`
+	Persistent      bool      `json:"persistent" yaml:"persistent"`
+	Locked          bool      `json:"locked,omitempty" yaml:"locked,omitempty"`
+	PinnedCommit    string    `json:"pinned_commit,omitempty" yaml:"pinned_commit,omitempty"`
+	CreatedAt       time.Time `json:"created_at" yaml:"created_at"`
+	PID             int       `json:"pid,omitempty" yaml:"pid,omitempty"`           // macOS unionfs / Linux fuse-overlayfs process
+	UseFuse         bool      `json:"use_fuse,omitempty" yaml:"use_fuse,omitempty"` // Linux: whether fuse-overlayfs was used
+	Remote          bool      `json:"remote,omitempty" yaml:"remote,omitempty"`
+	RemoteNode      string    `json:"remote_node,omitempty" yaml:"remote_node,omitempty"`
+	RemoteRepo      string    `json:"remote_repo,omitempty" yaml:"remote_repo,omitempty"`
+	RemoteMountPath string    `json:"remote_mount_path,omitempty" yaml:"remote_mount_path,omitempty"`
+	FUSEPid         int       `json:"fuse_pid,omitempty" yaml:"fuse_pid,omitempty"`
 }
 
 // OverlayStatus represents the current status of an overlay
