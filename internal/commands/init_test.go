@@ -11,7 +11,7 @@ func TestWriteIfNotExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	setupTestEnv(t, tmpDir)
 
@@ -56,12 +56,12 @@ func TestWriteIfNotExists_Permissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	setupTestEnv(t, tmpDir)
 
 	path := filepath.Join(tmpDir, "secure.yaml")
-	writeIfNotExists(path, "secret", false)
+	_ = writeIfNotExists(path, "secret", false)
 
 	info, _ := os.Stat(path)
 	if info.Mode().Perm() != 0600 {

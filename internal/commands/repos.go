@@ -49,14 +49,14 @@ func doRepos(_ context.Context, _ *cli.Command) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "REPO\tNODE\tADDRESS")
+	_, _ = fmt.Fprintln(w, "REPO\tNODE\tADDRESS")
 
 	for repo, nodes := range repoMap {
 		for i, n := range nodes {
 			if i == 0 {
-				fmt.Fprintf(w, "%s\t%s\t%s\n", repo, n.NodeID, n.Addr)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", repo, n.NodeID, n.Addr)
 			} else {
-				fmt.Fprintf(w, "\t%s\t%s\n", n.NodeID, n.Addr)
+				_, _ = fmt.Fprintf(w, "\t%s\t%s\n", n.NodeID, n.Addr)
 			}
 		}
 	}

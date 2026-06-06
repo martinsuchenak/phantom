@@ -23,7 +23,7 @@ func TestCountFileChanges_Added(t *testing.T) {
 	upperDir := t.TempDir()
 	baseDir := t.TempDir()
 
-	os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
 
 	added, modified, deleted := countFileChanges(upperDir, baseDir)
 	if added != 1 {
@@ -38,8 +38,8 @@ func TestCountFileChanges_Modified(t *testing.T) {
 	upperDir := t.TempDir()
 	baseDir := t.TempDir()
 
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
 
 	added, modified, deleted := countFileChanges(upperDir, baseDir)
 	if modified != 1 {
@@ -55,7 +55,7 @@ func TestCountFileChanges_Deleted(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Whiteout file indicates deletion
-	os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
 
 	added, _, deleted := countFileChanges(upperDir, baseDir)
 	if deleted != 1 {
@@ -101,8 +101,8 @@ func TestDoInspect_WithMockManager(t *testing.T) {
 	store := createTestStore(t, tmpDir)
 
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(upperDir, 0755)
-	os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("data"), 0644)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("data"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "inspect-test",
@@ -112,7 +112,7 @@ func TestDoInspect_WithMockManager(t *testing.T) {
 		Branch:     "phantom/inspect-test",
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["inspect-test"] = true
 
 	// Test that GetStatus works through mock

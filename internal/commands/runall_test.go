@@ -45,7 +45,7 @@ func TestLoadAgentsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	yamlContent := `agents:
   - name: test-agent
@@ -57,7 +57,7 @@ func TestLoadAgentsConfig(t *testing.T) {
     task: "do other"
 `
 	configPath := filepath.Join(tmpDir, "agents.yaml")
-	os.WriteFile(configPath, []byte(yamlContent), 0644)
+	_ = os.WriteFile(configPath, []byte(yamlContent), 0644)
 
 	agents, err := loadAgentsConfig(configPath)
 	if err != nil {
@@ -85,14 +85,14 @@ func TestLoadAgentsConfig_MissingAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	yamlContent := `agents:
   - name: bad-agent
     task: "no agent command"
 `
 	configPath := filepath.Join(tmpDir, "agents.yaml")
-	os.WriteFile(configPath, []byte(yamlContent), 0644)
+	_ = os.WriteFile(configPath, []byte(yamlContent), 0644)
 
 	_, err = loadAgentsConfig(configPath)
 	if err == nil {
@@ -112,10 +112,10 @@ func TestLoadAgentsConfig_InvalidYAML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, "agents.yaml")
-	os.WriteFile(configPath, []byte("{{invalid yaml"), 0644)
+	_ = os.WriteFile(configPath, []byte("{{invalid yaml"), 0644)
 
 	_, err = loadAgentsConfig(configPath)
 	if err == nil {

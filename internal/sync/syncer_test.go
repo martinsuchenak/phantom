@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/rpc"
+	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	phantomsync "github.com/martinsuchenak/phantom/internal/sync"
 )
 
@@ -21,7 +21,7 @@ func setupSyncServer(t *testing.T, repos map[string]string) (proto.FileServiceCl
 	lis := bufconn.Listen(1024 * 1024)
 	srv := grpc.NewServer()
 	proto.RegisterFileServiceServer(srv, rpc.NewFileServer(repos))
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough://bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -33,7 +33,7 @@ func setupSyncServer(t *testing.T, repos map[string]string) (proto.FileServiceCl
 		t.Fatalf("dial: %v", err)
 	}
 	return proto.NewFileServiceClient(conn), func() {
-		conn.Close()
+		_ = conn.Close()
 		srv.Stop()
 	}
 }
@@ -44,8 +44,8 @@ func TestSyncerPushFile(t *testing.T) {
 	defer cleanup()
 
 	upperDir := t.TempDir()
-	os.Mkdir(filepath.Join(upperDir, "sub"), 0755)
-	os.WriteFile(filepath.Join(upperDir, "sub", "file.txt"), []byte("hello sync"), 0644)
+	_ = os.Mkdir(filepath.Join(upperDir, "sub"), 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "sub", "file.txt"), []byte("hello sync"), 0644)
 
 	syncer := phantomsync.NewSyncer(client, "testrepo", 0)
 	result, err := syncer.Push(context.Background(), upperDir, "test commit")
@@ -68,13 +68,13 @@ func TestSyncerPushFile(t *testing.T) {
 func TestSyncerDeleteFile(t *testing.T) {
 	serverDir := t.TempDir()
 	targetFile := filepath.Join(serverDir, "todelete.txt")
-	os.WriteFile(targetFile, []byte("gonna be deleted"), 0644)
+	_ = os.WriteFile(targetFile, []byte("gonna be deleted"), 0644)
 
 	client, cleanup := setupSyncServer(t, map[string]string{"testrepo": serverDir})
 	defer cleanup()
 
 	upperDir := t.TempDir()
-	os.WriteFile(filepath.Join(upperDir, ".wh.todelete.txt"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.todelete.txt"), []byte(""), 0644)
 
 	syncer := phantomsync.NewSyncer(client, "testrepo", 0)
 	result, err := syncer.Push(context.Background(), upperDir, "delete commit")

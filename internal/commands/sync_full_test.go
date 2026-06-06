@@ -23,7 +23,7 @@ func TestSyncNonGit_Basic(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["sync-nongit"] = true
 
 	err := syncNonGit(context.Background(), ovl, mock, store, false)
@@ -50,7 +50,7 @@ func TestSyncNonGit_DryRun(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["sync-dry"] = true
 
 	err := syncNonGit(context.Background(), ovl, mock, store, true)
@@ -72,7 +72,7 @@ func TestSyncNonGit_UnmountError(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["sync-uerr"] = true
 	mock.unmountErr = fmt.Errorf("unmount failed")
 

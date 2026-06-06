@@ -320,7 +320,7 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 			}
 
 			if err := store.Save(ovl); err != nil {
-				mgr.Cleanup(ovl)
+				_ = mgr.Cleanup(ovl)
 				return fmt.Errorf("failed to save overlay state: %w", err)
 			}
 			log.Debug("Created overlay %q at %s", name, ovl.MountPoint)
@@ -386,7 +386,7 @@ func processRunChain(ctx context.Context, baseDir, name, branch string, steps []
 			if err := mgr.Cleanup(ovl); err != nil {
 				log.Warn("Failed to cleanup: %v", err)
 			}
-			store.Delete(name)
+			_ = store.Delete(name)
 		}
 
 		return nil
@@ -448,7 +448,7 @@ func runChainStep(ctx context.Context, step chainStep, ovl *api.Overlay, absBase
 
 	if t != nil {
 		w := NewTUIWriter(t, step.Name, true)
-		defer w.Close()
+		defer func() { _ = w.Close() }()
 		runOpts.Stdout = w
 		runOpts.Stderr = w
 	}
@@ -482,7 +482,7 @@ func printChainSummary(results []agentResult, format string, stoppedEarly bool) 
 	log.Info("=== Chain Summary ===")
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "STEP\tCOMMAND\tEXIT\tDURATION\tSTATUS")
+	_, _ = fmt.Fprintln(w, "STEP\tCOMMAND\tEXIT\tDURATION\tSTATUS")
 
 	failed := 0
 	for _, r := range results {
@@ -500,7 +500,7 @@ func printChainSummary(results []agentResult, format string, stoppedEarly bool) 
 			failed++
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
 			r.Name,
 			r.Agent,
 			r.ExitCode,
@@ -508,7 +508,7 @@ func printChainSummary(results []agentResult, format string, stoppedEarly bool) 
 			status,
 		)
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	fmt.Println()
 	if stoppedEarly {

@@ -40,12 +40,12 @@ type compareEntry struct {
 }
 
 type compareResult struct {
-	OverlayA  string         `json:"overlay_a"`
-	OverlayB  string         `json:"overlay_b"`
-	Files     []compareEntry `json:"files"`
-	OnlyA     int            `json:"only_a"`
-	OnlyB     int            `json:"only_b"`
-	Both      int            `json:"both"`
+	OverlayA string         `json:"overlay_a"`
+	OverlayB string         `json:"overlay_b"`
+	Files    []compareEntry `json:"files"`
+	OnlyA    int            `json:"only_a"`
+	OnlyB    int            `json:"only_b"`
+	Both     int            `json:"both"`
 }
 
 func doCompare(ctx context.Context, cmd *cli.Command) error {
@@ -102,7 +102,7 @@ type fileChange struct {
 func scanChanges(upperDir, baseDir string) map[string]fileChange {
 	changes := make(map[string]fileChange)
 
-	filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -184,7 +184,7 @@ func printCompareTable(result compareResult) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "FILE\t%s\t%s\tNOTE\n", result.OverlayA, result.OverlayB)
+	_, _ = fmt.Fprintf(w, "FILE\t%s\t%s\tNOTE\n", result.OverlayA, result.OverlayB)
 
 	for _, f := range result.Files {
 		colA := f.StatusA
@@ -203,9 +203,9 @@ func printCompareTable(result compareResult) error {
 				note = "⚠ diverged"
 			}
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", f.File, colA, colB, note)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", f.File, colA, colB, note)
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	fmt.Println()
 	log.Info("Only in %s: %d | Only in %s: %d | Both: %d",

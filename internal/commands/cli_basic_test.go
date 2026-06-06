@@ -69,10 +69,7 @@ func TestNewCommands(t *testing.T) {
 			if c.Name != cmd.name {
 				t.Errorf("expected command name %q, got %q", cmd.name, c.Name)
 			}
-			if c.Run != nil {
-				// We only want to test that the command is constructed properly.
-				// Executing Run directly with unparsed flags would cause unwanted side effects.
-			}
+			// We only verify construction; executing Run with unparsed flags would cause side effects.
 		})
 	}
 }

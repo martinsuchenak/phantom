@@ -75,7 +75,7 @@ func exportDiff(upperDir, baseDir, output string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		w = f
 	}
 
@@ -137,34 +137,34 @@ func writeUnifiedDiff(w io.Writer, path, oldContent, newContent string) {
 	newLines := splitLines(newContent)
 
 	if oldContent == "" {
-		fmt.Fprintf(w, "--- /dev/null\n")
-		fmt.Fprintf(w, "+++ b/%s\n", path)
-		fmt.Fprintf(w, "@@ -0,0 +1,%d @@\n", len(newLines))
+		_, _ = fmt.Fprintf(w, "--- /dev/null\n")
+		_, _ = fmt.Fprintf(w, "+++ b/%s\n", path)
+		_, _ = fmt.Fprintf(w, "@@ -0,0 +1,%d @@\n", len(newLines))
 		for _, line := range newLines {
-			fmt.Fprintf(w, "+%s\n", line)
+			_, _ = fmt.Fprintf(w, "+%s\n", line)
 		}
 		return
 	}
 
 	if newContent == "" {
-		fmt.Fprintf(w, "--- a/%s\n", path)
-		fmt.Fprintf(w, "+++ /dev/null\n")
-		fmt.Fprintf(w, "@@ -1,%d +0,0 @@\n", len(oldLines))
+		_, _ = fmt.Fprintf(w, "--- a/%s\n", path)
+		_, _ = fmt.Fprintf(w, "+++ /dev/null\n")
+		_, _ = fmt.Fprintf(w, "@@ -1,%d +0,0 @@\n", len(oldLines))
 		for _, line := range oldLines {
-			fmt.Fprintf(w, "-%s\n", line)
+			_, _ = fmt.Fprintf(w, "-%s\n", line)
 		}
 		return
 	}
 
 	// Simple full-file diff for modified files
-	fmt.Fprintf(w, "--- a/%s\n", path)
-	fmt.Fprintf(w, "+++ b/%s\n", path)
-	fmt.Fprintf(w, "@@ -1,%d +1,%d @@\n", len(oldLines), len(newLines))
+	_, _ = fmt.Fprintf(w, "--- a/%s\n", path)
+	_, _ = fmt.Fprintf(w, "+++ b/%s\n", path)
+	_, _ = fmt.Fprintf(w, "@@ -1,%d +1,%d @@\n", len(oldLines), len(newLines))
 	for _, line := range oldLines {
-		fmt.Fprintf(w, "-%s\n", line)
+		_, _ = fmt.Fprintf(w, "-%s\n", line)
 	}
 	for _, line := range newLines {
-		fmt.Fprintf(w, "+%s\n", line)
+		_, _ = fmt.Fprintf(w, "+%s\n", line)
 	}
 }
 
@@ -184,17 +184,17 @@ func exportTar(upperDir, baseDir, output string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var tw *tar.Writer
 	if strings.HasSuffix(output, ".gz") || strings.HasSuffix(output, ".tgz") {
 		gw := gzip.NewWriter(f)
-		defer gw.Close()
+		defer func() { _ = gw.Close() }()
 		tw = tar.NewWriter(gw)
 	} else {
 		tw = tar.NewWriter(f)
 	}
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	count := 0
 	err = filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
@@ -229,8 +229,8 @@ func exportTar(upperDir, baseDir, output string) error {
 		if err != nil {
 			return nil
 		}
-		defer file.Close()
-		io.Copy(tw, file)
+		defer func() { _ = file.Close() }()
+		_, _ = io.Copy(tw, file)
 		count++
 		return nil
 	})

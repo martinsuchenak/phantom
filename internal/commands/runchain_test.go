@@ -33,7 +33,7 @@ steps:
   - agent: "echo world"
 `
 		path := tmpDir + "/chain.yaml"
-		os.WriteFile(path, []byte(yaml), 0644)
+		_ = os.WriteFile(path, []byte(yaml), 0644)
 
 		cc, err := loadChainConfig(path)
 		if err != nil {
@@ -62,7 +62,7 @@ steps:
     task: "no agent"
 `
 		path := tmpDir + "/bad-chain.yaml"
-		os.WriteFile(path, []byte(yaml), 0644)
+		_ = os.WriteFile(path, []byte(yaml), 0644)
 
 		_, err := loadChainConfig(path)
 		if err == nil {
@@ -79,7 +79,7 @@ steps:
 
 	t.Run("invalid yaml", func(t *testing.T) {
 		path := tmpDir + "/invalid.yaml"
-		os.WriteFile(path, []byte("{{invalid"), 0644)
+		_ = os.WriteFile(path, []byte("{{invalid"), 0644)
 
 		_, err := loadChainConfig(path)
 		if err == nil {
@@ -123,10 +123,10 @@ func TestPrintChainSummary_Table(t *testing.T) {
 
 	err := printChainSummary(results, "table", false)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -151,10 +151,10 @@ func TestPrintChainSummary_JSON(t *testing.T) {
 
 	err := printChainSummary(results, "json", false)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -179,10 +179,10 @@ func TestPrintChainSummary_StoppedEarly(t *testing.T) {
 
 	err := printChainSummary(results, "table", true)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -222,7 +222,7 @@ func TestProcessRunChain(t *testing.T) {
 	log = &MockLogger{}
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	name := "chain-test"
 	mountPoint := filepath.Join(tmpDir, "state", "mnt", name)

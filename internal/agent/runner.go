@@ -111,14 +111,14 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 			}
 		}
 	} else {
-		defer logFile.Close()
+		defer func() { _ = logFile.Close() }()
 		// Write header to log
-		fmt.Fprintf(logFile, "=== Phantom Agent Log ===\n")
-		fmt.Fprintf(logFile, "Overlay:  %s\n", ovl.Name)
-		fmt.Fprintf(logFile, "Agent:    %s\n", opts.Agent)
-		fmt.Fprintf(logFile, "Task:     %s\n", opts.Task)
-		fmt.Fprintf(logFile, "Started:  %s\n", time.Now().Format(time.RFC3339))
-		fmt.Fprintf(logFile, "=========================\n\n")
+		_, _ = fmt.Fprintf(logFile, "=== Phantom Agent Log ===\n")
+		_, _ = fmt.Fprintf(logFile, "Overlay:  %s\n", ovl.Name)
+		_, _ = fmt.Fprintf(logFile, "Agent:    %s\n", opts.Agent)
+		_, _ = fmt.Fprintf(logFile, "Task:     %s\n", opts.Task)
+		_, _ = fmt.Fprintf(logFile, "Started:  %s\n", time.Now().Format(time.RFC3339))
+		_, _ = fmt.Fprintf(logFile, "=========================\n\n")
 
 		if opts.Headless {
 			// Headless: output goes to log file, plus custom writers if any
@@ -177,10 +177,10 @@ func (r *Runner) Run(ctx context.Context, ovl *api.Overlay, opts *api.RunOptions
 
 	// Write footer to log file
 	if logFile != nil {
-		fmt.Fprintf(logFile, "\n=========================\n")
-		fmt.Fprintf(logFile, "Finished: %s\n", time.Now().Format(time.RFC3339))
-		fmt.Fprintf(logFile, "Duration: %s\n", duration.Round(time.Second))
-		fmt.Fprintf(logFile, "Exit:     %d\n", exitCode)
+		_, _ = fmt.Fprintf(logFile, "\n=========================\n")
+		_, _ = fmt.Fprintf(logFile, "Finished: %s\n", time.Now().Format(time.RFC3339))
+		_, _ = fmt.Fprintf(logFile, "Duration: %s\n", duration.Round(time.Second))
+		_, _ = fmt.Fprintf(logFile, "Exit:     %d\n", exitCode)
 	}
 
 	// Handle git operations on completion
@@ -213,8 +213,8 @@ func parseCommandLine(cmdLine string) []string {
 	quoteChar := rune(0)
 
 	for _, r := range cmdLine {
-		switch {
-		case r == '"' || r == '\'':
+		switch r {
+		case '"', '\'':
 			if inQuote && r == quoteChar {
 				inQuote = false
 				quoteChar = 0
@@ -224,7 +224,7 @@ func parseCommandLine(cmdLine string) []string {
 			} else {
 				current.WriteRune(r)
 			}
-		case r == ' ' || r == '\t':
+		case ' ', '\t':
 			if inQuote {
 				current.WriteRune(r)
 			} else if current.Len() > 0 {
@@ -258,9 +258,7 @@ func (r *Runner) buildEnv(ovl *api.Overlay, opts *api.RunOptions) []string {
 	)
 
 	// Add configured agent env vars
-	for _, e := range r.cfg.AgentEnv {
-		env = append(env, e)
-	}
+	env = append(env, r.cfg.AgentEnv...)
 
 	return env
 }

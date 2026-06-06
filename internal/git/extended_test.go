@@ -15,16 +15,16 @@ func TestGitExtended(t *testing.T) {
 
 	t.Run("stash operations", func(t *testing.T) {
 		repoPath := createTestRepo(t)
-		defer os.RemoveAll(repoPath)
+		defer func() { _ = os.RemoveAll(repoPath) }()
 
 		// Create a file and commit it first so it's tracked
 		testFile := filepath.Join(repoPath, "stash-test.txt")
-		os.WriteFile(testFile, []byte("initial"), 0644)
-		exec.Command("git", "-C", repoPath, "add", ".").Run()
-		exec.Command("git", "-C", repoPath, "commit", "-m", "add stash-test.txt").Run()
+		_ = os.WriteFile(testFile, []byte("initial"), 0644)
+		_ = exec.Command("git", "-C", repoPath, "add", ".").Run()
+		_ = exec.Command("git", "-C", repoPath, "commit", "-m", "add stash-test.txt").Run()
 
 		// Modify it to create a dirty state
-		os.WriteFile(testFile, []byte("dirty"), 0644)
+		_ = os.WriteFile(testFile, []byte("dirty"), 0644)
 
 		if err := gitOps.Stash(ctx, repoPath, "saving work"); err != nil {
 			t.Fatalf("failed to stash: %v", err)
@@ -49,17 +49,17 @@ func TestGitExtended(t *testing.T) {
 
 	t.Run("fetch", func(t *testing.T) {
 		repoPath := createTestRepo(t)
-		defer os.RemoveAll(repoPath)
+		defer func() { _ = os.RemoveAll(repoPath) }()
 
 		// Just run fetch, it might fail if no remote but at least covers the code path
 		// To test properly we'd need a remote.
 		// Let's create a bare repo as remote
 		remoteDir, _ := os.MkdirTemp("", "git-remote-*")
-		defer os.RemoveAll(remoteDir)
-		exec.Command("git", "init", "--bare", remoteDir).Run()
+		defer func() { _ = os.RemoveAll(remoteDir) }()
+		_ = exec.Command("git", "init", "--bare", remoteDir).Run()
 
 		// Add remote
-		exec.Command("git", "-C", repoPath, "remote", "add", "origin", remoteDir).Run()
+		_ = exec.Command("git", "-C", repoPath, "remote", "add", "origin", remoteDir).Run()
 
 		if err := gitOps.Fetch(ctx, repoPath); err != nil {
 			t.Errorf("fetch failed: %v", err)
@@ -68,13 +68,13 @@ func TestGitExtended(t *testing.T) {
 
 	t.Run("push branch", func(t *testing.T) {
 		repoPath := createTestRepo(t)
-		defer os.RemoveAll(repoPath)
+		defer func() { _ = os.RemoveAll(repoPath) }()
 
 		remoteDir, _ := os.MkdirTemp("", "git-remote-*")
-		defer os.RemoveAll(remoteDir)
-		exec.Command("git", "init", "--bare", remoteDir).Run()
+		defer func() { _ = os.RemoveAll(remoteDir) }()
+		_ = exec.Command("git", "init", "--bare", remoteDir).Run()
 
-		exec.Command("git", "-C", repoPath, "remote", "add", "origin", remoteDir).Run()
+		_ = exec.Command("git", "-C", repoPath, "remote", "add", "origin", remoteDir).Run()
 
 		// Get current branch name
 		out, _ := exec.Command("git", "-C", repoPath, "branch", "--show-current").Output()
@@ -91,7 +91,7 @@ func TestGitExtended(t *testing.T) {
 
 	t.Run("delete branch", func(t *testing.T) {
 		repoPath := createTestRepo(t)
-		defer os.RemoveAll(repoPath)
+		defer func() { _ = os.RemoveAll(repoPath) }()
 
 		// Get default branch
 		out, _ := exec.Command("git", "-C", repoPath, "branch", "--show-current").Output()
@@ -100,7 +100,7 @@ func TestGitExtended(t *testing.T) {
 			defaultBranch = defaultBranch[:len(defaultBranch)-1]
 		}
 
-		gitOps.CreateBranch(ctx, repoPath, "to-delete", "")
+		_ = gitOps.CreateBranch(ctx, repoPath, "to-delete", "")
 
 		// Switch back to default branch
 		if err := gitOps.SwitchBranch(ctx, repoPath, defaultBranch); err != nil {
@@ -114,11 +114,11 @@ func TestGitExtended(t *testing.T) {
 
 	t.Run("get remote url", func(t *testing.T) {
 		repoPath := createTestRepo(t)
-		defer os.RemoveAll(repoPath)
+		defer func() { _ = os.RemoveAll(repoPath) }()
 
 		// Use example.com instead of github.com to avoid local git config rewrites (ssh vs https)
 		targetUrl := "https://example.com/repo.git"
-		exec.Command("git", "-C", repoPath, "remote", "add", "origin", targetUrl).Run()
+		_ = exec.Command("git", "-C", repoPath, "remote", "add", "origin", targetUrl).Run()
 
 		url, err := gitOps.GetRemoteURL(ctx, repoPath)
 		if err != nil {

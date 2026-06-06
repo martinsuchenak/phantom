@@ -62,11 +62,11 @@ func setupMockPath(t *testing.T) (string, func()) {
 	}
 
 	oldPath := os.Getenv("PATH")
-	os.Setenv("PATH", tmpDir+string(os.PathListSeparator)+oldPath)
+	_ = os.Setenv("PATH", tmpDir+string(os.PathListSeparator)+oldPath)
 
 	return tmpDir, func() {
-		os.Setenv("PATH", oldPath)
-		os.RemoveAll(tmpDir)
+		_ = os.Setenv("PATH", oldPath)
+		_ = os.RemoveAll(tmpDir)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestRootCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Mock global config and logger
 	oldCfg := cfg
@@ -120,7 +120,7 @@ func TestListCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -182,7 +182,7 @@ func TestStartCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Update mock mount script with correct path
 	mountPoint := filepath.Join(tmpDir, "state", "mnt", "test-overlay")
@@ -215,7 +215,7 @@ func TestStartCommand(t *testing.T) {
 
 	// Create base dir
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Call processStart directly to bypass CLI parsing issues in tests
 	err = processStart(context.Background(), baseDir, "test-overlay", "", false)
@@ -243,7 +243,7 @@ func TestStopCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -265,7 +265,7 @@ func TestStopCommand(t *testing.T) {
 	}
 
 	overlayPath := filepath.Join(tmpDir, "mnt", "test-overlay")
-	os.MkdirAll(overlayPath, 0755)
+	_ = os.MkdirAll(overlayPath, 0755)
 
 	err = store.Save(&api.Overlay{
 		Name:       "test-overlay",
@@ -304,7 +304,7 @@ func TestRunCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -331,7 +331,7 @@ func TestRunCommand(t *testing.T) {
 
 	// Create base dir
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Update mock mount for the expected overlay path
 	// Name: "test-run" -> Mount: .../mnt/test-run
@@ -362,7 +362,7 @@ func TestStatusCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -419,7 +419,7 @@ func TestStartCommand_Persistent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -439,7 +439,7 @@ func TestStartCommand_Persistent(t *testing.T) {
 	log = mockLog
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Update mock mount
 	mountPoint := filepath.Join(tmpDir, "state", "mnt", "test-persist")
@@ -470,7 +470,7 @@ func TestStartCommand_Existing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -489,19 +489,19 @@ func TestStartCommand_Existing(t *testing.T) {
 	log = mockLog
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Pre-create overlay state
 	store, _ := state.NewStore(cfg.StateDir)
 	mountPoint := filepath.Join(tmpDir, "mnt", "test-existing")
-	store.Save(&api.Overlay{
+	_ = store.Save(&api.Overlay{
 		Name:       "test-existing",
 		MountPoint: mountPoint,
 		BaseDir:    baseDir,
 	})
 
 	// Pre-mock mount to simulate it's ALREADY mounted
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 	updateMockMount(t, mockBinDir, mountPoint)
 
 	// Call processStart
@@ -531,7 +531,7 @@ func TestStatusCommand_Unmounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -547,7 +547,7 @@ func TestStatusCommand_Unmounted(t *testing.T) {
 	log = mockLog
 
 	store, _ := state.NewStore(cfg.StateDir)
-	store.Save(&api.Overlay{
+	_ = store.Save(&api.Overlay{
 		Name:       "test-unmounted",
 		MountPoint: "/tmp/fake-mount",
 	})
@@ -570,7 +570,7 @@ func TestStartCommand_WithBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	oldCfg := cfg
 	oldLog := log
@@ -594,7 +594,7 @@ func TestStartCommand_WithBranch(t *testing.T) {
 	log = mockLog
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	mountPoint := filepath.Join(tmpDir, "state", "mnt", "test-branch")
 	updateMockMount(t, mockBinDir, mountPoint)

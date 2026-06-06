@@ -27,7 +27,7 @@ func TestWriteIfNotExists_Nested(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	nested := filepath.Join(tmpDir, "a", "b", "c", "file.txt")
-	os.MkdirAll(filepath.Dir(nested), 0755)
+	_ = os.MkdirAll(filepath.Dir(nested), 0755)
 	err := writeIfNotExists(nested, "content", false)
 	if err != nil {
 		t.Fatalf("writeIfNotExists nested failed: %v", err)

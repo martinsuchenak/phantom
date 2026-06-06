@@ -118,7 +118,7 @@ func gcLogs(dir string, known map[string]bool, dryRun bool) int {
 		if dryRun {
 			log.Info("[dry-run] Would remove orphaned log: %s", name)
 		} else {
-			os.Remove(path)
+			_ = os.Remove(path)
 			log.Info("Removed orphaned log: %s", name)
 		}
 		cleaned++
@@ -144,7 +144,7 @@ func gcSnapshots(dir string, known map[string]bool, dryRun bool) int {
 			if dryRun {
 				log.Info("[dry-run] Would remove broken snapshot: %s", e.Name())
 			} else {
-				os.RemoveAll(path)
+				_ = os.RemoveAll(path)
 				log.Info("Removed broken snapshot: %s", e.Name())
 			}
 			cleaned++
@@ -159,7 +159,7 @@ func gcSnapshots(dir string, known map[string]bool, dryRun bool) int {
 			if dryRun {
 				log.Info("[dry-run] Would remove orphaned snapshot: %s (overlay %q gone)", e.Name(), meta.Overlay)
 			} else {
-				os.RemoveAll(path)
+				_ = os.RemoveAll(path)
 				log.Info("Removed orphaned snapshot: %s (overlay %q gone)", e.Name(), meta.Overlay)
 			}
 			cleaned++

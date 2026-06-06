@@ -1418,7 +1418,7 @@ func processMerge(srcName, dstName string, dryRun, force bool) error {
 			if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err == nil {
 				f, _ := os.Create(filepath.Join(filepath.Dir(dstPath), ".wh."+filepath.Base(a.RelPath)))
 				if f != nil {
-					f.Close()
+					_ = f.Close()
 					deleted++
 				}
 			}
@@ -1696,14 +1696,14 @@ func (n *tuiNotifier) Summary(results []agentResult) {
 			status = "❌ failed"
 			failed++
 		}
-		sb.WriteString(fmt.Sprintf("| %s | `%s` | %d | %s | %s |\n",
-			r.Name, r.Agent, r.ExitCode, formatDuration(r.Duration), status))
+		fmt.Fprintf(&sb, "| %s | `%s` | %d | %s | %s |\n",
+			r.Name, r.Agent, r.ExitCode, formatDuration(r.Duration), status)
 	}
 	sb.WriteString("\n")
 	if failed > 0 {
-		sb.WriteString(fmt.Sprintf("**%d/%d agent(s) failed.**", failed, len(results)))
+		fmt.Fprintf(&sb, "**%d/%d agent(s) failed.**", failed, len(results))
 	} else {
-		sb.WriteString(fmt.Sprintf("**All %d agent(s) completed successfully.**", len(results)))
+		fmt.Fprintf(&sb, "**All %d agent(s) completed successfully.**", len(results))
 	}
 	n.t.AddMessageAs(tui.RoleAssistant, "pipeline summary", sb.String())
 }
@@ -1840,14 +1840,14 @@ func readLogTail(name string, maxBytes int64) (string, error) {
 		}
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
 		return "", err
 	}
 	if offset := info.Size() - maxBytes; offset > 0 {
-		f.Seek(offset, io.SeekStart)
+		_, _ = f.Seek(offset, io.SeekStart)
 		// Skip partial first line
 		buf := make([]byte, 1)
 		for {

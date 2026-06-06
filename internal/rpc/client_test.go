@@ -11,7 +11,7 @@ import (
 
 func TestFileClientStat(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "x.txt"), []byte("abc"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "x.txt"), []byte("abc"), 0644)
 
 	srv, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
@@ -32,8 +32,8 @@ func TestFileClientStat(t *testing.T) {
 
 func TestFileClientReadDir(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0644)
 
 	srv, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
@@ -50,7 +50,7 @@ func TestFileClientReadDir(t *testing.T) {
 
 func TestFileClientReadAll(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello"), 0644)
 
 	srv, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()

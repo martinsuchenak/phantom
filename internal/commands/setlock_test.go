@@ -17,7 +17,7 @@ func TestSetLock_Lock(t *testing.T) {
 		BaseDir:   tmpDir,
 		CreatedAt: time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 
 	if err := setLock("lock-me", true); err != nil {
 		t.Fatalf("setLock(true) failed: %v", err)
@@ -40,7 +40,7 @@ func TestSetLock_Unlock(t *testing.T) {
 		Locked:    true,
 		CreatedAt: time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 
 	if err := setLock("unlock-me", false); err != nil {
 		t.Fatalf("setLock(false) failed: %v", err)

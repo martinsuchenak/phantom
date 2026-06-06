@@ -35,13 +35,13 @@ func TestPrintStatusJSON_Full(t *testing.T) {
 	tmpDir := t.TempDir()
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	// Create some files for change counting
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("new"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "json-test",
@@ -64,10 +64,10 @@ func TestPrintStatusJSON_Full(t *testing.T) {
 
 	err := printStatusJSON(ovl, status)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {

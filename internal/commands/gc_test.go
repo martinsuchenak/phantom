@@ -19,8 +19,8 @@ func TestGcDir(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	dir := filepath.Join(tmpDir, "overlays")
-	os.MkdirAll(filepath.Join(dir, "known-overlay"), 0755)
-	os.MkdirAll(filepath.Join(dir, "orphaned-overlay"), 0755)
+	_ = os.MkdirAll(filepath.Join(dir, "known-overlay"), 0755)
+	_ = os.MkdirAll(filepath.Join(dir, "orphaned-overlay"), 0755)
 
 	known := map[string]bool{"known-overlay": true}
 
@@ -62,10 +62,10 @@ func TestGcLogs(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	logsDir := filepath.Join(tmpDir, "logs")
-	os.MkdirAll(logsDir, 0755)
-	os.WriteFile(filepath.Join(logsDir, "known.log"), []byte("log"), 0644)
-	os.WriteFile(filepath.Join(logsDir, "orphaned.log"), []byte("log"), 0644)
-	os.WriteFile(filepath.Join(logsDir, "not-a-log.txt"), []byte("skip"), 0644)
+	_ = os.MkdirAll(logsDir, 0755)
+	_ = os.WriteFile(filepath.Join(logsDir, "known.log"), []byte("log"), 0644)
+	_ = os.WriteFile(filepath.Join(logsDir, "orphaned.log"), []byte("log"), 0644)
+	_ = os.WriteFile(filepath.Join(logsDir, "not-a-log.txt"), []byte("skip"), 0644)
 
 	known := map[string]bool{"known": true}
 
@@ -98,19 +98,19 @@ func TestGcSnapshots(t *testing.T) {
 
 	// Known overlay snapshot
 	knownSnap := filepath.Join(snapshotsDir, "known-snap")
-	os.MkdirAll(knownSnap, 0755)
+	_ = os.MkdirAll(knownSnap, 0755)
 	meta1, _ := json.Marshal(map[string]string{"overlay": "known"})
-	os.WriteFile(filepath.Join(knownSnap, "meta.json"), meta1, 0600)
+	_ = os.WriteFile(filepath.Join(knownSnap, "meta.json"), meta1, 0600)
 
 	// Orphaned overlay snapshot
 	orphanSnap := filepath.Join(snapshotsDir, "orphan-snap")
-	os.MkdirAll(orphanSnap, 0755)
+	_ = os.MkdirAll(orphanSnap, 0755)
 	meta2, _ := json.Marshal(map[string]string{"overlay": "deleted-overlay"})
-	os.WriteFile(filepath.Join(orphanSnap, "meta.json"), meta2, 0600)
+	_ = os.WriteFile(filepath.Join(orphanSnap, "meta.json"), meta2, 0600)
 
 	// Broken snapshot (no meta.json)
 	brokenSnap := filepath.Join(snapshotsDir, "broken-snap")
-	os.MkdirAll(brokenSnap, 0755)
+	_ = os.MkdirAll(brokenSnap, 0755)
 
 	known := map[string]bool{"known": true}
 

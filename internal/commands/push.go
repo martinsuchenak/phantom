@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/martinsuchenak/phantom/internal/rpc"
+	"github.com/martinsuchenak/phantom/internal/state"
 	synckit "github.com/martinsuchenak/phantom/internal/sync"
 	phantomtsnet "github.com/martinsuchenak/phantom/internal/tsnet"
-	"github.com/martinsuchenak/phantom/internal/state"
 	"github.com/martinsuchenak/phantom/pkg/api"
 	"github.com/paularlott/cli"
 )
@@ -90,7 +90,7 @@ func doPush(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return fmt.Errorf("tsnet setup: %w", err)
 		}
-		defer srv.Close()
+		defer func() { _ = srv.Close() }()
 
 		dialer := phantomtsnet.NewSmartDialer(srv, 10*time.Second)
 		dialOpts.ContextDialer = dialer.DialContext

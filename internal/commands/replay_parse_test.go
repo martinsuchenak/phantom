@@ -11,7 +11,7 @@ func TestParseLastRun_Basic(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	logsDir := filepath.Join(tmpDir, "state", "logs")
-	os.MkdirAll(logsDir, 0755)
+	_ = os.MkdirAll(logsDir, 0755)
 	cfg.Paths.Logs = logsDir
 
 	logContent := `=== Phantom Agent Log ===
@@ -22,7 +22,7 @@ Started:  2025-01-15 10:30:00
 =========================
 some output here
 `
-	os.WriteFile(filepath.Join(logsDir, "test-overlay.log"), []byte(logContent), 0644)
+	_ = os.WriteFile(filepath.Join(logsDir, "test-overlay.log"), []byte(logContent), 0644)
 
 	info, err := parseLastRun("test-overlay")
 	if err != nil {
@@ -41,7 +41,7 @@ func TestParseLastRun_MultipleRuns(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	logsDir := filepath.Join(tmpDir, "state", "logs")
-	os.MkdirAll(logsDir, 0755)
+	_ = os.MkdirAll(logsDir, 0755)
 	cfg.Paths.Logs = logsDir
 
 	logContent := `=== Phantom Agent Log ===
@@ -55,7 +55,7 @@ Task:     second task
 =========================
 output 2
 `
-	os.WriteFile(filepath.Join(logsDir, "multi.log"), []byte(logContent), 0644)
+	_ = os.WriteFile(filepath.Join(logsDir, "multi.log"), []byte(logContent), 0644)
 
 	info, err := parseLastRun("multi")
 	if err != nil {
@@ -75,7 +75,7 @@ func TestParseLastRun_NoLogFile(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	logsDir := filepath.Join(tmpDir, "state", "logs")
-	os.MkdirAll(logsDir, 0755)
+	_ = os.MkdirAll(logsDir, 0755)
 	cfg.Paths.Logs = logsDir
 
 	_, err := parseLastRun("nonexistent")
@@ -89,10 +89,10 @@ func TestParseLastRun_EmptyLog(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	logsDir := filepath.Join(tmpDir, "state", "logs")
-	os.MkdirAll(logsDir, 0755)
+	_ = os.MkdirAll(logsDir, 0755)
 	cfg.Paths.Logs = logsDir
 
-	os.WriteFile(filepath.Join(logsDir, "empty.log"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(logsDir, "empty.log"), []byte(""), 0644)
 
 	info, err := parseLastRun("empty")
 	if err != nil {

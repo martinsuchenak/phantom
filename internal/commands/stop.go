@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"syscall"
 
 	"github.com/martinsuchenak/phantom/internal/git"
@@ -158,12 +159,17 @@ func processStop(ctx context.Context, name string, doCleanup, doPush, force bool
 	}
 
 	// Kill the FUSE daemon process for remote overlays.
+	// SIGTERM lets the daemon call server.Unmount() gracefully; the explicit
+	// umount below is a fallback for when the daemon is already dead.
 	if ovl.FUSEPid > 0 {
 		if proc, err := os.FindProcess(ovl.FUSEPid); err == nil {
 			if killErr := proc.Signal(syscall.SIGTERM); killErr == nil {
 				log.Debug("Sent SIGTERM to fuse-daemon PID %d", ovl.FUSEPid)
 			}
 		}
+	}
+	if ovl.RemoteMountPath != "" {
+		_ = exec.Command("umount", "-f", ovl.RemoteMountPath).Run()
 	}
 
 	// Remove state

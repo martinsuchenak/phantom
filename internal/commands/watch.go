@@ -44,8 +44,8 @@ func NewWatchCommand() *cli.Command {
 
 // fileSnapshot holds mod time and size for change detection
 type fileSnapshot struct {
-	ModTime time.Time
-	Size    int64
+	ModTime    time.Time
+	Size       int64
 	IsWhiteout bool
 }
 
@@ -136,7 +136,7 @@ func pollWatch(ctx context.Context, upperDir, baseDir string, interval time.Dura
 }
 
 func scanUpperDir(upperDir, baseDir string, out map[string]fileSnapshot, _ map[string]fileSnapshot, _ string) {
-	filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

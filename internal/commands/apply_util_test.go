@@ -11,7 +11,7 @@ func TestCopyFile_Basic(t *testing.T) {
 
 	src := filepath.Join(tmpDir, "src.txt")
 	dst := filepath.Join(tmpDir, "dst.txt")
-	os.WriteFile(src, []byte("hello world"), 0644)
+	_ = os.WriteFile(src, []byte("hello world"), 0644)
 
 	if err := copyFile(src, dst, 0644); err != nil {
 		t.Fatalf("copyFile failed: %v", err)
@@ -31,7 +31,7 @@ func TestCopyFile_CreatesParentDirs(t *testing.T) {
 
 	src := filepath.Join(tmpDir, "src.txt")
 	dst := filepath.Join(tmpDir, "deep", "nested", "dst.txt")
-	os.WriteFile(src, []byte("nested"), 0644)
+	_ = os.WriteFile(src, []byte("nested"), 0644)
 
 	if err := copyFile(src, dst, 0644); err != nil {
 		t.Fatalf("copyFile failed: %v", err)
@@ -57,11 +57,11 @@ func TestApplyFileCopy_DryRun(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mount")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	// Add a new file in mount
-	os.WriteFile(filepath.Join(mountDir, "new.go"), []byte("package main"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "new.go"), []byte("package main"), 0644)
 
 	ovl := testOverlay("apply-dry", baseDir, mountDir, filepath.Join(tmpDir, "upper"))
 
@@ -82,10 +82,10 @@ func TestApplyFileCopy_CopiesNewFiles(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mount")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
-	os.WriteFile(filepath.Join(mountDir, "added.go"), []byte("package added"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "added.go"), []byte("package added"), 0644)
 
 	ovl := testOverlay("apply-copy", baseDir, mountDir, filepath.Join(tmpDir, "upper"))
 
@@ -109,11 +109,11 @@ func TestApplyFileCopy_DeletesRemovedFiles(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mount")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	// File exists in base but not in mount (deleted)
-	os.WriteFile(filepath.Join(baseDir, "removed.go"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "removed.go"), []byte("old"), 0644)
 
 	ovl := testOverlay("apply-del", baseDir, mountDir, filepath.Join(tmpDir, "upper"))
 

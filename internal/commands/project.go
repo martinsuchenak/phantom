@@ -182,14 +182,14 @@ func doProjectList(_ context.Context, _ *cli.Command) error {
 	sort.Strings(names)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tPATH\tSERVED")
+	_, _ = fmt.Fprintln(w, "NAME\tPATH\tSERVED")
 	for _, name := range names {
 		proj := cfg.Projects[name]
 		served := "-"
 		if proj.Serve {
 			served = "yes"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", name, proj.Path, served)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", name, proj.Path, served)
 	}
 	return w.Flush()
 }

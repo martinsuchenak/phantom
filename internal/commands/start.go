@@ -3,10 +3,12 @@ package commands
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -92,6 +94,10 @@ func validateStartArgs(baseDir, repo, nodeAddr string) error {
 }
 
 func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string, persistent bool) error {
+	if err := checkFUSEAvailable(); err != nil {
+		return err
+	}
+
 	if nodeAddr == "" {
 		log.Info("--node not specified, probing LAN via mDNS for a node serving %q...", repo)
 		discovered, err := phantommdns.DiscoverRepo(ctx, repo, 0)
@@ -105,6 +111,11 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 	grpcAddr := nodeAddr
 	if !strings.Contains(nodeAddr, ":") {
 		grpcAddr = fmt.Sprintf("%s:%d", nodeAddr, cfg.Node.GRPCPort)
+	} else if host, portStr, err := net.SplitHostPort(nodeAddr); err == nil {
+		if port, err := strconv.Atoi(portStr); err == nil && port == cfg.Node.GossipPort {
+			log.Warn("--node %s looks like a gossip address (port %d); the gRPC port is %d. "+
+				"Try: --node %s", nodeAddr, port, cfg.Node.GRPCPort, host)
+		}
 	}
 
 	mountBase := cfg.GetRemoteMountsPath()
@@ -125,7 +136,9 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 		return fmt.Errorf("resolve executable path: %w", err)
 	}
 	readyFile := remoteMountPath + ".fuse_ready"
+	errFile := remoteMountPath + ".fuse_err"
 	_ = os.Remove(readyFile) // ensure stale ready file is gone
+	_ = os.Remove(errFile)
 
 	daemonArgs := []string{
 		"_fuse-daemon",
@@ -156,10 +169,17 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 		}
 	}
 
+	stderrFile, stderrErr := os.CreateTemp("", "phantom-fuse-*.log")
 	fuseDaemon := exec.CommandContext(context.Background(), selfExe, daemonArgs...)
 	fuseDaemon.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from terminal
+	if stderrErr == nil {
+		fuseDaemon.Stderr = stderrFile
+	}
 	if err := fuseDaemon.Start(); err != nil {
 		return fmt.Errorf("start fuse-daemon: %w", err)
+	}
+	if stderrErr == nil {
+		_ = stderrFile.Close()
 	}
 	fusePID := fuseDaemon.Process.Pid
 
@@ -178,7 +198,20 @@ func processStartRemote(ctx context.Context, repo, nodeAddr, name, branch string
 	}
 	if _, err := os.Stat(readyFile); err != nil {
 		_ = fuseDaemon.Process.Kill()
-		return fmt.Errorf("timed out waiting for FUSE mount at %s", remoteMountPath)
+		// SIGKILL is uncatchable, so the daemon never calls server.Unmount().
+		// Explicitly clean up any partial remote mount so retries don't fail.
+		_ = exec.Command("umount", "-f", remoteMountPath).Run()
+		errMsg := fmt.Sprintf("timed out waiting for FUSE mount at %s", remoteMountPath)
+		if stderrErr == nil {
+			if daemonLog, readErr := os.ReadFile(stderrFile.Name()); readErr == nil && len(daemonLog) > 0 {
+				errMsg += "\nfuse-daemon output:\n" + string(daemonLog)
+			}
+			_ = os.Remove(stderrFile.Name())
+		}
+		return fmt.Errorf("%s", errMsg)
+	}
+	if stderrErr == nil {
+		_ = os.Remove(stderrFile.Name())
 	}
 
 	overlayErr := processStart(ctx, remoteMountPath, name, branch, persistent)
@@ -338,7 +371,7 @@ func processStart(ctx context.Context, baseDir, name, branch string, persistent 
 	// Save state
 	if err := store.Save(ovl); err != nil {
 		// Try to cleanup on failure
-		mgr.Cleanup(ovl)
+		_ = mgr.Cleanup(ovl)
 		return fmt.Errorf("failed to save overlay state: %w", err)
 	}
 

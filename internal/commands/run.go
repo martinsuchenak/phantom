@@ -219,7 +219,7 @@ func processRun(ctx context.Context, agentCmd, task, model, baseDir, name, branc
 
 		// Save state
 		if err := store.Save(ovl); err != nil {
-			mgr.Cleanup(ovl)
+			_ = mgr.Cleanup(ovl)
 			return 0, fmt.Errorf("failed to save overlay state: %w", err)
 		}
 		log.Debug("Created new overlay (UseFuse=%v, MountPoint=%s)", ovl.UseFuse, ovl.MountPoint)
@@ -266,7 +266,7 @@ func processRun(ctx context.Context, agentCmd, task, model, baseDir, name, branc
 		if err := mgr.Cleanup(ovl); err != nil {
 			log.Error("Failed to cleanup overlay: %v", err)
 		}
-		store.Delete(name)
+		_ = store.Delete(name)
 	} else if ovl.PID > 0 {
 		ovl.PID = 0
 		if err := store.Save(ovl); err != nil {

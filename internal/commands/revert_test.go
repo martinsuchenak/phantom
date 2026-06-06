@@ -16,11 +16,11 @@ func TestRevertCommand(t *testing.T) {
 
 	// Create a base directory
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Base files
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("base content"), 0644)
-	os.WriteFile(filepath.Join(baseDir, "deleted.txt"), []byte("to be deleted"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("base content"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "deleted.txt"), []byte("to be deleted"), 0644)
 
 	// Create an overlay
 	ovlStore, err := state.NewStore(cfg.GetStatePath())
@@ -33,17 +33,17 @@ func TestRevertCommand(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		MountPoint: filepath.Join(tmpDir, "mnt"),
 	}
-	os.MkdirAll(ovl.UpperDir, 0755)
-	os.MkdirAll(ovl.MountPoint, 0755)
-	ovlStore.Save(ovl)
+	_ = os.MkdirAll(ovl.UpperDir, 0755)
+	_ = os.MkdirAll(ovl.MountPoint, 0755)
+	_ = ovlStore.Save(ovl)
 
 	// Simulate overlay changes
 	// 1. Modified file
-	os.WriteFile(filepath.Join(ovl.UpperDir, "existing.txt"), []byte("modified content"), 0644)
+	_ = os.WriteFile(filepath.Join(ovl.UpperDir, "existing.txt"), []byte("modified content"), 0644)
 	// 2. Added file
-	os.WriteFile(filepath.Join(ovl.UpperDir, "new.txt"), []byte("new content"), 0644)
+	_ = os.WriteFile(filepath.Join(ovl.UpperDir, "new.txt"), []byte("new content"), 0644)
 	// 3. Deleted file
-	os.WriteFile(filepath.Join(ovl.UpperDir, ".wh.deleted.txt"), []byte(""), 0644)
+	_ = os.WriteFile(filepath.Join(ovl.UpperDir, ".wh.deleted.txt"), []byte(""), 0644)
 
 	t.Run("Revert modified file", func(t *testing.T) {
 		err := processRevert("test-revert-ovl", "existing.txt")

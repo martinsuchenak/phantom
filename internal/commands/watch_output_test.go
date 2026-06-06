@@ -14,10 +14,10 @@ func TestPrintWatchEvent_Simple(t *testing.T) {
 
 	printWatchEvent("simple", "+", "new-file.txt")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, "+") {
@@ -35,10 +35,10 @@ func TestPrintWatchEvent_JSON(t *testing.T) {
 
 	printWatchEvent("json", "+", "added.txt")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, `"status":"added"`) {
@@ -56,10 +56,10 @@ func TestPrintWatchEvent_Modified(t *testing.T) {
 
 	printWatchEvent("json", "~", "changed.txt")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, `"status":"modified"`) {
@@ -74,10 +74,10 @@ func TestPrintWatchEvent_Deleted(t *testing.T) {
 
 	printWatchEvent("json", "-", "removed.txt")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, `"status":"deleted"`) {
@@ -92,10 +92,10 @@ func TestPrintWatchEvent_Reset(t *testing.T) {
 
 	printWatchEvent("json", "⊘", "reset.txt")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, `"status":"reset"`) {

@@ -497,7 +497,7 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 					return
 				}
 				if saveErr := store.Save(ovl); saveErr != nil {
-					mgr.Cleanup(ovl)
+					_ = mgr.Cleanup(ovl)
 					agErr := fmt.Errorf("failed to save overlay: %w", saveErr)
 					depResults.Store(ag.Name, pipelineDepResult{Err: agErr})
 					resultsMu.Lock()
@@ -510,11 +510,11 @@ func processRunPipeline(ctx context.Context, baseDir string, pc *pipelineConfig,
 
 			defer func() {
 				if doCleanup {
-					mgr.Cleanup(ovl)
-					store.Delete(ovlName)
+					_ = mgr.Cleanup(ovl)
+					_ = store.Delete(ovlName)
 				} else if ovl.PID > 0 {
 					ovl.PID = 0
-					store.Save(ovl)
+					_ = store.Save(ovl)
 				}
 			}()
 

@@ -125,11 +125,11 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 		BindAddr:      gossipAddr,
 		AdvertiseAddr: fmt.Sprintf("%s:%d", outboundIP(), nc.GossipPort),
 		GRPCAddr:      fmt.Sprintf("%s:%d", outboundIP(), nc.GRPCPort),
-		Seeds:        nc.Seeds,
-		Repos:        repoNames,
-		PIDFile:      cfg.GetNodePIDPath(),
-		Logger:       log,
-		RepoUpdateCh: repoUpdateCh,
+		Seeds:         nc.Seeds,
+		Repos:         repoNames,
+		PIDFile:       cfg.GetNodePIDPath(),
+		Logger:        log,
+		RepoUpdateCh:  repoUpdateCh,
 	}
 
 	peersStatePath := cfg.GetPeersStatePath()
@@ -162,7 +162,7 @@ func doNodeStart(ctx context.Context, cmd *cli.Command) error {
 	defer func() {
 		mdnsMu.Lock()
 		if mdnsSrv != nil {
-			mdnsSrv.Close()
+			_ = mdnsSrv.Close()
 		}
 		mdnsMu.Unlock()
 	}()
@@ -218,7 +218,7 @@ func watchConfigReload(
 		log.Warn("config watcher: failed to create fsnotify watcher: %v", err)
 		return
 	}
-	defer watcher.Close()
+	defer func() { _ = watcher.Close() }()
 
 	// Watch the directory; file-level watches miss atomic saves (rename+create).
 	if err := watcher.Add(filepath.Dir(watchPath)); err != nil {
@@ -267,7 +267,7 @@ func watchConfigReload(
 			// Swap mDNS announcement.
 			mdnsMu.Lock()
 			if *mdnsSrv != nil {
-				(*mdnsSrv).Close()
+				_ = (*mdnsSrv).Close()
 			}
 			if srv, err := phantommdns.Announce(nc.ID, nc.GRPCPort, newNames); err != nil {
 				log.Warn("mDNS re-announce failed: %v", err)
@@ -403,6 +403,6 @@ func outboundIP() string {
 	if err != nil {
 		return "localhost"
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	return conn.LocalAddr().(*net.UDPAddr).IP.String()
 }

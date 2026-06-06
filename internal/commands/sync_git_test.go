@@ -27,7 +27,7 @@ func initGitRepo(t *testing.T, dir string) {
 
 	// Create initial commit
 	file := filepath.Join(dir, "README.md")
-	os.WriteFile(file, []byte("init"), 0644)
+	_ = os.WriteFile(file, []byte("init"), 0644)
 	runGit(t, dir, "add", "README.md")
 	runGit(t, dir, "commit", "-m", "init")
 }
@@ -47,26 +47,26 @@ func TestSyncGit(t *testing.T) {
 	log = &MockLogger{}
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 	initGitRepo(t, baseDir)
 
 	mountPoint := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 
 	// Copy .git and contents from base to mount point to mock it as an overlay Repo
 	// We'll just init another git repo there with same state and an extra commit
 	initGitRepo(t, mountPoint)
 	runGit(t, mountPoint, "checkout", "-b", "phantom/overlay1")
 	file := filepath.Join(mountPoint, "overlay.txt")
-	os.WriteFile(file, []byte("overlay change"), 0644)
+	_ = os.WriteFile(file, []byte("overlay change"), 0644)
 	runGit(t, mountPoint, "add", "overlay.txt")
 	runGit(t, mountPoint, "commit", "-m", "overlay")
 
 	// We have uncommitted changes to test stash
-	os.WriteFile(filepath.Join(mountPoint, "uncommitted.txt"), []byte("uncommitted"), 0644)
+	_ = os.WriteFile(filepath.Join(mountPoint, "uncommitted.txt"), []byte("uncommitted"), 0644)
 	runGit(t, mountPoint, "add", "uncommitted.txt")
 
-	os.WriteFile(filepath.Join(baseDir, "base.txt"), []byte("base change"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "base.txt"), []byte("base change"), 0644)
 	runGit(t, baseDir, "add", "base.txt")
 	runGit(t, baseDir, "commit", "-m", "base update")
 
@@ -112,17 +112,17 @@ func TestSyncGitStash(t *testing.T) {
 	log = &MockLogger{}
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 	initGitRepo(t, baseDir)
 
 	mountPoint := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 	initGitRepo(t, mountPoint)
 	runGit(t, mountPoint, "checkout", "-b", "phantom/overlay1")
 	runGit(t, mountPoint, "remote", "add", "origin", baseDir)
 
 	// Uncommitted change to Stash
-	os.WriteFile(filepath.Join(mountPoint, "uncommitted.txt"), []byte("uncommitted"), 0644)
+	_ = os.WriteFile(filepath.Join(mountPoint, "uncommitted.txt"), []byte("uncommitted"), 0644)
 	runGit(t, mountPoint, "add", "uncommitted.txt")
 
 	gitOps := git.NewOperations()

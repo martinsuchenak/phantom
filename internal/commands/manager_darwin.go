@@ -9,10 +9,14 @@ import (
 
 // newOverlayManager creates a Darwin (macOS) overlay manager
 func newOverlayManager(cfg *config.Config) (overlayManager, error) {
+	fuseOptions := cfg.Darwin.FUSEOptions
+	if cfg.Darwin.UseFSKit {
+		fuseOptions = append([]string{"backend=fskit"}, fuseOptions...)
+	}
 	return overlay.NewManager(
 		cfg.GetStatePath(),
 		cfg.Darwin.UnionFSPath,
-		cfg.Darwin.FUSEOptions,
+		fuseOptions,
 		false, // Darwin always uses FUSE (unionfs-fuse)
 	)
 }

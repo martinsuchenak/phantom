@@ -65,7 +65,7 @@ func processLogs(name string, tail int, showPath bool) error {
 		}
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if tail > 0 {
 		// Seek to tail bytes from end
@@ -75,7 +75,7 @@ func processLogs(name string, tail int, showPath bool) error {
 		}
 		offset := info.Size() - int64(tail)
 		if offset > 0 {
-			f.Seek(offset, io.SeekStart)
+			_, _ = f.Seek(offset, io.SeekStart)
 			// Skip partial first line
 			buf := make([]byte, 1)
 			for {

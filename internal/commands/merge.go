@@ -37,8 +37,8 @@ func NewMergeCommand() *cli.Command {
 }
 
 type mergeAction struct {
-	RelPath  string
-	Status   string // "copy", "delete", "conflict"
+	RelPath    string
+	Status     string // "copy", "delete", "conflict"
 	IsConflict bool
 }
 
@@ -97,7 +97,7 @@ func doMerge(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if conflicts > 0 && !force {
-		printMergePlan(actions, srcName, dstName, conflicts)
+		_ = printMergePlan(actions, srcName, dstName, conflicts)
 		return fmt.Errorf("%d conflict(s) detected — use --force to overwrite or resolve manually", conflicts)
 	}
 
@@ -121,7 +121,7 @@ func doMerge(ctx context.Context, cmd *cli.Command) error {
 				log.Warn("Failed to create whiteout for %s: %v", a.RelPath, err)
 				continue
 			}
-			f.Close()
+			_ = f.Close()
 			deleted++
 		} else {
 			// Copy file
@@ -209,4 +209,3 @@ func printMergePlan(actions []mergeAction, src, dst string, conflicts int) error
 	log.Info("%d file(s) to merge, %d conflict(s)", len(actions), conflicts)
 	return nil
 }
-

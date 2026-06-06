@@ -51,13 +51,13 @@ func doNodeList(_ context.Context, cmd *cli.Command) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tGRPC ADDR\tREPOS")
+	_, _ = fmt.Fprintln(w, "ID\tGRPC ADDR\tREPOS")
 	for _, p := range peers {
 		repos := "-"
 		if len(p.Repos) > 0 {
 			repos = fmt.Sprintf("%v", p.Repos)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", p.ID, p.GRPCAddr, repos)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", p.ID, p.GRPCAddr, repos)
 	}
 	return w.Flush()
 }

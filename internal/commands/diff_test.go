@@ -23,19 +23,19 @@ func TestProcessDiff(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	// Create base files
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("original"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("original"), 0644)
 
 	// Create upper files (changes)
-	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("modified"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "new-file.txt"), []byte("added"), 0644)
-	os.WriteFile(filepath.Join(upperDir, ".wh.deleted.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("modified"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "new-file.txt"), []byte("added"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.deleted.txt"), []byte{}, 0644)
 
 	ovl := testOverlay("test-diff", baseDir, filepath.Join(tmpDir, "mnt"), upperDir)
-	store.Save(&ovl)
+	_ = store.Save(&ovl)
 
 	t.Run("table format", func(t *testing.T) {
 		old := os.Stdout
@@ -44,10 +44,10 @@ func TestProcessDiff(t *testing.T) {
 
 		err := processDiff("test-diff", "table", false)
 
-		w.Close()
+		_ = w.Close()
 		os.Stdout = old
 		var buf bytes.Buffer
-		buf.ReadFrom(r)
+		_, _ = buf.ReadFrom(r)
 		output := buf.String()
 
 		if err != nil {
@@ -68,10 +68,10 @@ func TestProcessDiff(t *testing.T) {
 
 		err := processDiff("test-diff", "json", false)
 
-		w.Close()
+		_ = w.Close()
 		os.Stdout = old
 		var buf bytes.Buffer
-		buf.ReadFrom(r)
+		_, _ = buf.ReadFrom(r)
 		output := buf.String()
 
 		if err != nil {
@@ -89,10 +89,10 @@ func TestProcessDiff(t *testing.T) {
 
 		err := processDiff("test-diff", "simple", false)
 
-		w.Close()
+		_ = w.Close()
 		os.Stdout = old
 		var buf bytes.Buffer
-		buf.ReadFrom(r)
+		_, _ = buf.ReadFrom(r)
 		output := buf.String()
 
 		if err != nil {
@@ -128,7 +128,7 @@ func TestProcessDiffNoUpperDir(t *testing.T) {
 	store := createTestStore(t, tmpDir)
 
 	ovl := testOverlay("no-upper", tmpDir, tmpDir, "")
-	store.Save(&ovl)
+	_ = store.Save(&ovl)
 
 	err := processDiff("no-upper", "table", false)
 	if err == nil {
@@ -143,11 +143,11 @@ func TestProcessDiffEmpty(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	ovl := testOverlay("empty-diff", baseDir, filepath.Join(tmpDir, "mnt"), upperDir)
-	store.Save(&ovl)
+	_ = store.Save(&ovl)
 
 	err := processDiff("empty-diff", "table", false)
 	if err != nil {
@@ -159,16 +159,16 @@ func TestCountFileChanges(t *testing.T) {
 	tmpDir := t.TempDir()
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	// Base has existing file
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
 
 	// Upper has: modified existing, new file, whiteout
-	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("new"), 0644)
-	os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
 
 	a, m, d := countFileChanges(upperDir, baseDir)
 	if a != 1 {

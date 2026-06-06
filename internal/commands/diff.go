@@ -171,18 +171,18 @@ func printDiffTable(result diffResult) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "STATUS\tFILE\tSIZE")
+	_, _ = fmt.Fprintln(w, "STATUS\tFILE\tSIZE")
 
 	for _, f := range result.Files {
 		sizeStr := formatSize(f.Size)
 		if f.Status == "deleted" {
 			sizeStr = "-"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", f.Status, f.Path, sizeStr)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", f.Status, f.Path, sizeStr)
 	}
 
-	fmt.Fprintln(w)
-	w.Flush()
+	_, _ = fmt.Fprintln(w)
+	_ = w.Flush()
 
 	return printDiffStat(result)
 }
@@ -216,6 +216,7 @@ func printDiffStat(result diffResult) error {
 		total, result.Added, result.Modified, result.Deleted)
 	return nil
 }
+
 // countFileChanges returns quick file change counts for an overlay's upper directory.
 // Used by status command to show a summary without full diff output.
 func countFileChanges(upperDir, baseDir string) (added, modified, deleted int) {
@@ -223,7 +224,7 @@ func countFileChanges(upperDir, baseDir string) (added, modified, deleted int) {
 		return
 	}
 
-	filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(upperDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

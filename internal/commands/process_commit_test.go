@@ -23,7 +23,7 @@ func TestProcessCommit_NotMounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["commit-unmounted"] = false
 
 	err := processCommit(context.Background(), "commit-unmounted", "test commit", false)
@@ -57,7 +57,7 @@ func TestProcessApply_NotMounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["apply-unmounted"] = false
 
 	err := processApply(context.Background(), "apply-unmounted", false, false, false)
@@ -86,13 +86,13 @@ func TestProcessApply_FileCopy(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	// Create files in mount (simulating overlay changes)
-	os.WriteFile(filepath.Join(mountDir, "new.txt"), []byte("new content"), 0644)
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
-	os.WriteFile(filepath.Join(mountDir, "existing.txt"), []byte("updated"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "new.txt"), []byte("new content"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "existing.txt"), []byte("updated"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "apply-fc",
@@ -101,7 +101,7 @@ func TestProcessApply_FileCopy(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["apply-fc"] = true
 
 	// Non-git apply should use file copy
@@ -128,9 +128,9 @@ func TestProcessApply_DryRun(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
-	os.WriteFile(filepath.Join(mountDir, "new.txt"), []byte("new"), 0644)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
+	_ = os.WriteFile(filepath.Join(mountDir, "new.txt"), []byte("new"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "apply-dry",
@@ -139,7 +139,7 @@ func TestProcessApply_DryRun(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["apply-dry"] = true
 
 	err := processApply(context.Background(), "apply-dry", true, false, false)
@@ -166,7 +166,7 @@ func TestProcessStatus(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["status-test"] = true
 
 	t.Run("single overlay", func(t *testing.T) {

@@ -17,16 +17,16 @@ func TestScanChanges(t *testing.T) {
 	tmpDir := t.TempDir()
 	upperDir := filepath.Join(tmpDir, "upper")
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(upperDir, 0755)
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// New file (not in base)
-	os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
 	// Modified file (exists in base)
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("changed"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("changed"), 0644)
 	// Deleted file (whiteout)
-	os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
 
 	changes := scanChanges(upperDir, baseDir)
 
@@ -47,9 +47,9 @@ func TestScanChanges(t *testing.T) {
 func TestScanChangesSkipsWorkDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(filepath.Join(upperDir, "work"), 0755)
-	os.WriteFile(filepath.Join(upperDir, "work", "skip.txt"), []byte("skip"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "keep.txt"), []byte("keep"), 0644)
+	_ = os.MkdirAll(filepath.Join(upperDir, "work"), 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "work", "skip.txt"), []byte("skip"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "keep.txt"), []byte("keep"), 0644)
 
 	changes := scanChanges(upperDir, tmpDir)
 	if len(changes) != 1 {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	phantomrpc "github.com/martinsuchenak/phantom/internal/rpc"
 	"github.com/martinsuchenak/phantom/internal/remotefs"
+	phantomrpc "github.com/martinsuchenak/phantom/internal/rpc"
 	phantomtsnet "github.com/martinsuchenak/phantom/internal/tsnet"
 	"github.com/paularlott/cli"
 	"tailscale.com/tsnet"
@@ -106,7 +106,7 @@ func doFuseDaemon(ctx context.Context, cmd *cli.Command) error {
 		if err != nil {
 			return fmt.Errorf("tsnet setup: %w", err)
 		}
-		defer srv.Close()
+		defer func() { _ = srv.Close() }()
 
 		dialer := phantomtsnet.NewSmartDialer(srv, 10*time.Second)
 		authOpts.ContextDialer = dialer.DialContext
@@ -120,6 +120,7 @@ func doFuseDaemon(ctx context.Context, cmd *cli.Command) error {
 	return remotefs.Mount(ctx, rfs, remotefs.MountOpts{
 		MountPoint: mountpoint,
 		ReadyFile:  readyFile,
+		AllowOther: true,
 	})
 }
 

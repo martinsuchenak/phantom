@@ -30,10 +30,10 @@ func TestDoTemplateListTable(t *testing.T) {
 		}
 	}
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 }
 
 func TestDoTemplateShow(t *testing.T) {
@@ -53,10 +53,10 @@ func TestDoTemplateShow(t *testing.T) {
 		t.Errorf("expected task_mode 'stdin', got %q", tmpl.TaskMode)
 	}
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 }
 
 func TestDoTemplateShowNotFound(t *testing.T) {

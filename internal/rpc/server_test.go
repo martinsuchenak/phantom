@@ -6,14 +6,15 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 	"github.com/martinsuchenak/phantom/internal/rpc"
+	proto "github.com/martinsuchenak/phantom/internal/rpc/proto"
 )
 
 const bufSize = 1024 * 1024
@@ -23,7 +24,7 @@ func setupServer(t *testing.T, repos map[string]string) (proto.FileServiceClient
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
 	proto.RegisterFileServiceServer(srv, rpc.NewFileServer(repos))
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough://bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -35,7 +36,7 @@ func setupServer(t *testing.T, repos map[string]string) (proto.FileServiceClient
 		t.Fatalf("failed to dial bufconn: %v", err)
 	}
 	return proto.NewFileServiceClient(conn), func() {
-		conn.Close()
+		_ = conn.Close()
 		srv.Stop()
 	}
 }
@@ -56,7 +57,7 @@ func TestListRepos(t *testing.T) {
 
 func TestStat_File(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hi"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("hi"), 0644)
 	client, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
 
@@ -70,11 +71,15 @@ func TestStat_File(t *testing.T) {
 	if resp.Size != 2 {
 		t.Errorf("expected size 2, got %d", resp.Size)
 	}
+	// Mode must use POSIX type bits, not Go's os.FileMode encoding.
+	if resp.Mode&syscall.S_IFMT != syscall.S_IFREG {
+		t.Errorf("expected S_IFREG type bits, got mode 0%o", resp.Mode)
+	}
 }
 
 func TestStat_Dir(t *testing.T) {
 	dir := t.TempDir()
-	os.Mkdir(filepath.Join(dir, "sub"), 0755)
+	_ = os.Mkdir(filepath.Join(dir, "sub"), 0755)
 	client, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
 
@@ -84,6 +89,10 @@ func TestStat_Dir(t *testing.T) {
 	}
 	if !resp.IsDir {
 		t.Error("expected dir, got file")
+	}
+	// Mode must use POSIX type bits, not Go's os.FileMode encoding.
+	if resp.Mode&syscall.S_IFMT != syscall.S_IFDIR {
+		t.Errorf("expected S_IFDIR type bits, got mode 0%o", resp.Mode)
 	}
 }
 
@@ -100,7 +109,7 @@ func TestStat_UnknownRepo(t *testing.T) {
 func TestStat_PathTraversal(t *testing.T) {
 	dir := t.TempDir()
 	secretDir := t.TempDir()
-	os.WriteFile(filepath.Join(secretDir, "secret.txt"), []byte("secret"), 0644)
+	_ = os.WriteFile(filepath.Join(secretDir, "secret.txt"), []byte("secret"), 0644)
 
 	client, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
@@ -113,8 +122,8 @@ func TestStat_PathTraversal(t *testing.T) {
 
 func TestReadDir(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644)
-	os.Mkdir(filepath.Join(dir, "sub"), 0755)
+	_ = os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644)
+	_ = os.Mkdir(filepath.Join(dir, "sub"), 0755)
 	client, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
 
@@ -130,7 +139,7 @@ func TestReadDir(t *testing.T) {
 func TestRead(t *testing.T) {
 	dir := t.TempDir()
 	content := []byte("hello world")
-	os.WriteFile(filepath.Join(dir, "f.txt"), content, 0644)
+	_ = os.WriteFile(filepath.Join(dir, "f.txt"), content, 0644)
 	client, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
 
@@ -156,7 +165,7 @@ func TestRead(t *testing.T) {
 
 func TestRead_WithOffset(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello world"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello world"), 0644)
 	client, cleanup := setupServer(t, map[string]string{"r": dir})
 	defer cleanup()
 
@@ -186,7 +195,7 @@ func setupServerDirect(t *testing.T, repos map[string]string) (*rpc.FileServer, 
 	srv := grpc.NewServer()
 	fs := rpc.NewFileServerWithOptions(repos, false, 0)
 	proto.RegisterFileServiceServer(srv, fs)
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 	conn, err := grpc.NewClient("passthrough://bufnet",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
@@ -196,14 +205,14 @@ func setupServerDirect(t *testing.T, repos map[string]string) (*rpc.FileServer, 
 	if err != nil {
 		t.Fatalf("failed to dial bufconn: %v", err)
 	}
-	return fs, proto.NewFileServiceClient(conn), func() { conn.Close(); srv.Stop() }
+	return fs, proto.NewFileServiceClient(conn), func() { _ = conn.Close(); srv.Stop() }
 }
 
 func TestUpdateRepos(t *testing.T) {
 	oldDir := t.TempDir()
-	os.WriteFile(filepath.Join(oldDir, "old.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(oldDir, "old.txt"), []byte("old"), 0644)
 	newDir := t.TempDir()
-	os.WriteFile(filepath.Join(newDir, "new.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(newDir, "new.txt"), []byte("new"), 0644)
 
 	fs, client, cleanup := setupServerDirect(t, map[string]string{"old-repo": oldDir})
 	defer cleanup()

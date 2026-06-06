@@ -108,14 +108,14 @@ func printListTable(infos []listOverlayInfo) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tSTATUS\tMOUNT POINT\tBRANCH\tUPTIME")
+	_, _ = fmt.Fprintln(w, "NAME\tSTATUS\tMOUNT POINT\tBRANCH\tUPTIME")
 
 	for _, info := range infos {
 		status := "mounted"
 		if !info.Mounted {
 			status = "unmounted"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 			info.Name,
 			status,
 			info.Path,

@@ -15,12 +15,12 @@ func TestCopyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	src := filepath.Join(tmpDir, "src.txt")
 	dst := filepath.Join(tmpDir, "subdir", "dst.txt")
 
-	os.WriteFile(src, []byte("hello world"), 0644)
+	_ = os.WriteFile(src, []byte("hello world"), 0644)
 
 	err = copyFile(src, dst, 0644)
 	if err != nil {
@@ -49,20 +49,20 @@ func TestApplyFileCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	setupTestEnv(t, tmpDir)
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mount")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	// Base has existing file
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old"), 0644)
 	// Mount has modified version + new file
-	os.WriteFile(filepath.Join(mountDir, "existing.txt"), []byte("new"), 0644)
-	os.WriteFile(filepath.Join(mountDir, "added.txt"), []byte("added"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "existing.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "added.txt"), []byte("added"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "test-apply",
@@ -97,20 +97,20 @@ func TestApplyFileCopy_Deletions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	setupTestEnv(t, tmpDir)
 
 	baseDir := filepath.Join(tmpDir, "base")
 	mountDir := filepath.Join(tmpDir, "mount")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	// Base has a file that's not in mount (deleted)
-	os.WriteFile(filepath.Join(baseDir, "deleted.txt"), []byte("gone"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "deleted.txt"), []byte("gone"), 0644)
 	// Mount has a file that's also in base
-	os.WriteFile(filepath.Join(baseDir, "kept.txt"), []byte("keep"), 0644)
-	os.WriteFile(filepath.Join(mountDir, "kept.txt"), []byte("keep"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "kept.txt"), []byte("keep"), 0644)
+	_ = os.WriteFile(filepath.Join(mountDir, "kept.txt"), []byte("keep"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "test-apply-del",
@@ -150,14 +150,14 @@ func TestApplyGit(t *testing.T) {
 	}()
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	initGitRepo(t, baseDir)
 
 	runGit(t, baseDir, "checkout", "-b", "phantom/overlay")
 
 	// Make a change in the overlay
-	os.WriteFile(filepath.Join(baseDir, "overlay.txt"), []byte("overlay change"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "overlay.txt"), []byte("overlay change"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "overlay",

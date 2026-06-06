@@ -29,7 +29,7 @@ func TestConflicts_GitConfidenceScore(t *testing.T) {
 	store := createTestStore(t, tmpDir)
 
 	baseDir := filepath.Join(tmpDir, "base_repo")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Initialize git repo
 	runGitCommand(t, baseDir, "init")
@@ -52,7 +52,7 @@ func TestConflicts_GitConfidenceScore(t *testing.T) {
 	// Create Overlay 1
 	ovl1Name := "ovl1"
 	upper1 := filepath.Join(tmpDir, "upper1")
-	os.MkdirAll(upper1, 0755)
+	_ = os.MkdirAll(upper1, 0755)
 	runGitCommand(t, baseDir, "checkout", "-b", "phantom/ovl1")
 
 	// Mod 1: Clean (line 1)
@@ -71,7 +71,7 @@ func TestConflicts_GitConfidenceScore(t *testing.T) {
 	// Create Overlay 2
 	ovl2Name := "ovl2"
 	upper2 := filepath.Join(tmpDir, "upper2")
-	os.MkdirAll(upper2, 0755)
+	_ = os.MkdirAll(upper2, 0755)
 	runGitCommand(t, baseDir, "checkout", "-b", "phantom/ovl2")
 
 	// Mod 1: Clean (line 5)
@@ -87,8 +87,8 @@ func TestConflicts_GitConfidenceScore(t *testing.T) {
 
 	ovl1 := &api.Overlay{Name: ovl1Name, BaseDir: baseDir, UpperDir: upper1, CreatedAt: time.Now()}
 	ovl2 := &api.Overlay{Name: ovl2Name, BaseDir: baseDir, UpperDir: upper2, CreatedAt: time.Now()}
-	store.Save(ovl1)
-	store.Save(ovl2)
+	_ = store.Save(ovl1)
+	_ = store.Save(ovl2)
 
 	// Run conflicts command
 	app := &cli.Command{
@@ -108,11 +108,11 @@ func TestConflicts_GitConfidenceScore(t *testing.T) {
 
 	err = app.Execute(ctx)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -143,12 +143,12 @@ func TestConflicts_NonGitHardConflict(t *testing.T) {
 	store := createTestStore(t, tmpDir)
 
 	baseDir := filepath.Join(tmpDir, "base_dir")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Create Overlay 1
 	ovl1Name := "ovl1"
 	upper1 := filepath.Join(tmpDir, "upper1")
-	os.MkdirAll(upper1, 0755)
+	_ = os.MkdirAll(upper1, 0755)
 
 	// Mod 1
 	err := os.WriteFile(filepath.Join(upper1, "shared.txt"), []byte("line1_mod1\n"), 0644)
@@ -159,7 +159,7 @@ func TestConflicts_NonGitHardConflict(t *testing.T) {
 	// Create Overlay 2
 	ovl2Name := "ovl2"
 	upper2 := filepath.Join(tmpDir, "upper2")
-	os.MkdirAll(upper2, 0755)
+	_ = os.MkdirAll(upper2, 0755)
 
 	// Mod 2
 	err = os.WriteFile(filepath.Join(upper2, "shared.txt"), []byte("line1_mod2\n"), 0644)
@@ -169,8 +169,8 @@ func TestConflicts_NonGitHardConflict(t *testing.T) {
 
 	ovl1 := &api.Overlay{Name: ovl1Name, BaseDir: baseDir, UpperDir: upper1, CreatedAt: time.Now()}
 	ovl2 := &api.Overlay{Name: ovl2Name, BaseDir: baseDir, UpperDir: upper2, CreatedAt: time.Now()}
-	store.Save(ovl1)
-	store.Save(ovl2)
+	_ = store.Save(ovl1)
+	_ = store.Save(ovl2)
 
 	// Run conflicts command
 	app := &cli.Command{
@@ -190,11 +190,11 @@ func TestConflicts_NonGitHardConflict(t *testing.T) {
 
 	err = app.Execute(ctx)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {

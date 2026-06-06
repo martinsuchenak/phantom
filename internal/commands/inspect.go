@@ -121,14 +121,14 @@ func doInspect(ctx context.Context, cmd *cli.Command) error {
 		Locked:       ovl.Locked,
 		PinnedCommit: ovl.PinnedCommit,
 		CreatedAt:    ovl.CreatedAt.Format("2006-01-02 15:04:05"),
-		PID:        ovl.PID,
-		FilesAdded: added,
-		FilesMod:   modified,
-		FilesDel:   deleted,
-		GitBranch:  gitBranch,
-		GitDirty:   gitDirty,
-		Snapshots:  snapCount,
-		HasLog:     hasLog,
+		PID:          ovl.PID,
+		FilesAdded:   added,
+		FilesMod:     modified,
+		FilesDel:     deleted,
+		GitBranch:    gitBranch,
+		GitDirty:     gitDirty,
+		Snapshots:    snapCount,
+		HasLog:       hasLog,
 	}
 	if status != nil {
 		out.Mounted = status.Mounted

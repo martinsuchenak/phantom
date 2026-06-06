@@ -19,17 +19,17 @@ func TestScanUpperDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	upperDir := filepath.Join(tmpDir, "upper")
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(upperDir, 0755)
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Create some files in upper
-	os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "modified.txt"), []byte("changed"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "new.txt"), []byte("new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "modified.txt"), []byte("changed"), 0644)
 	// Create a whiteout
-	os.WriteFile(filepath.Join(upperDir, ".wh.deleted.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.deleted.txt"), []byte{}, 0644)
 
 	// Create matching file in base (for "modified" detection)
-	os.WriteFile(filepath.Join(baseDir, "modified.txt"), []byte("original"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "modified.txt"), []byte("original"), 0644)
 
 	out := make(map[string]fileSnapshot)
 	scanUpperDir(upperDir, baseDir, out, nil, "")
@@ -54,9 +54,9 @@ func TestScanUpperDir(t *testing.T) {
 func TestScanUpperDirSkipsWorkDir(t *testing.T) {
 	tmpDir := t.TempDir()
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(filepath.Join(upperDir, "work"), 0755)
-	os.WriteFile(filepath.Join(upperDir, "work", "internal.txt"), []byte("skip"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "real.txt"), []byte("keep"), 0644)
+	_ = os.MkdirAll(filepath.Join(upperDir, "work"), 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "work", "internal.txt"), []byte("skip"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "real.txt"), []byte("keep"), 0644)
 
 	out := make(map[string]fileSnapshot)
 	scanUpperDir(upperDir, tmpDir, out, nil, "")
@@ -71,7 +71,7 @@ func TestScanUpperDirSkipsWorkDir(t *testing.T) {
 
 func TestFileExistsInBase(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.WriteFile(filepath.Join(tmpDir, "exists.txt"), []byte("hi"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "exists.txt"), []byte("hi"), 0644)
 
 	if !fileExistsInBase(tmpDir, "exists.txt") {
 		t.Error("expected file to exist in base")
@@ -84,7 +84,7 @@ func TestFileExistsInBase(t *testing.T) {
 func TestPollWatchCancellation(t *testing.T) {
 	tmpDir := t.TempDir()
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()

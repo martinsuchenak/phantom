@@ -20,14 +20,14 @@ func TestDarwinManager_Flow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	stateDir := filepath.Join(tmpDir, "state")
 
 	// Prepare expected mount point for mocking IsMounted
 	expectedMountPoint := filepath.Join(stateDir, "mnt", "test-ovl")
-	os.Setenv("GO_TEST_MOUNTED_PATHS", expectedMountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", expectedMountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	manager, err := NewManager(stateDir, "/usr/local/bin/unionfs-fuse", []string{"cow"}, false)
 	if err != nil {
@@ -36,7 +36,7 @@ func TestDarwinManager_Flow(t *testing.T) {
 
 	// 1. Create Overlay
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	opts := &api.CreateOptions{
 		Name:    "test-ovl",
@@ -100,14 +100,14 @@ func TestDarwinManager_Lifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	stateDir := filepath.Join(tmpDir, "state")
 
 	// Prepare expected mount point
 	expectedMountPoint := filepath.Join(stateDir, "mnt", "demo")
-	os.Setenv("GO_TEST_MOUNTED_PATHS", expectedMountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", expectedMountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	manager, err := NewManager(stateDir, "unionfs-fuse", nil, false)
 	if err != nil {
@@ -115,7 +115,7 @@ func TestDarwinManager_Lifecycle(t *testing.T) {
 	}
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Create
 	ovl, err := manager.Create(&api.CreateOptions{Name: "demo", BaseDir: baseDir})

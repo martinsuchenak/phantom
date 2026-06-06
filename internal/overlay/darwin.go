@@ -129,8 +129,8 @@ func (m *DarwinManager) Create(opts *api.CreateOptions) (*api.Overlay, error) {
 	// Mount the overlay
 	if err := m.Mount(overlay); err != nil {
 		// Cleanup on failure
-		os.RemoveAll(overlayDir)
-		os.RemoveAll(mountPoint)
+		_ = os.RemoveAll(overlayDir)
+		_ = os.RemoveAll(mountPoint)
 		return nil, err
 	}
 
@@ -186,7 +186,7 @@ func (m *DarwinManager) Mount(overlay *api.Overlay) error {
 	}
 
 	if !mounted {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		return api.NewError(api.ErrMountFailed, "mount verification failed after timeout", nil)
 	}
 
@@ -230,7 +230,7 @@ func (m *DarwinManager) killUnionFSProcess(overlay *api.Overlay) {
 	}
 
 	if process, err := os.FindProcess(overlay.PID); err == nil {
-		process.Kill()
+		_ = process.Kill()
 	}
 	overlay.PID = 0
 }
@@ -284,7 +284,7 @@ func (m *DarwinManager) GetStatus(overlay *api.Overlay) (*api.OverlayStatus, err
 	if mounted {
 		// Calculate size of upper directory
 		var size int64
-		filepath.Walk(overlay.UpperDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(overlay.UpperDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -346,7 +346,7 @@ func (m *DarwinManager) Prune() error {
 			if _, err := os.Stat(mountPoint); os.IsNotExist(err) {
 				// Mount point doesn't exist, clean up overlay data
 				overlayDir := filepath.Join(m.overlaysDir, name)
-				os.RemoveAll(overlayDir)
+				_ = os.RemoveAll(overlayDir)
 			}
 		}
 	}

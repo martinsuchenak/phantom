@@ -93,7 +93,7 @@ func TestDoHealth(t *testing.T) {
 	cmd := NewHealthCommand()
 
 	// mock basic setup
-	os.MkdirAll(filepath.Join(tmpDir, "state"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "state"), 0755)
 
 	runCommandWithArgs(t, []string{"health"}, func() {
 		err := doHealth(context.Background(), cmd)

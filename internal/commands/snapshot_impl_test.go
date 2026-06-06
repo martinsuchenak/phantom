@@ -28,14 +28,14 @@ func TestDoSnapshotListWithSnapshots(t *testing.T) {
 
 	snapshotsDir := cfg.GetSnapshotsPath()
 	snapDir := filepath.Join(snapshotsDir, "test-snap")
-	os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
+	_ = os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
 
 	meta := snapshotMeta{
 		Name:    "test-snap",
 		Overlay: "my-overlay",
 	}
 	metaData, _ := json.MarshalIndent(meta, "", "  ")
-	os.WriteFile(filepath.Join(snapDir, "meta.json"), metaData, 0600)
+	_ = os.WriteFile(filepath.Join(snapDir, "meta.json"), metaData, 0600)
 
 	// Verify we can read the snapshot metadata
 	entries, err := os.ReadDir(snapshotsDir)
@@ -69,8 +69,8 @@ func TestDoSnapshotDelete(t *testing.T) {
 
 	snapshotsDir := cfg.GetSnapshotsPath()
 	snapDir := filepath.Join(snapshotsDir, "delete-me")
-	os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
-	os.WriteFile(filepath.Join(snapDir, "meta.json"), []byte(`{"name":"delete-me"}`), 0600)
+	_ = os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
+	_ = os.WriteFile(filepath.Join(snapDir, "meta.json"), []byte(`{"name":"delete-me"}`), 0600)
 
 	// Verify it exists
 	if _, err := os.Stat(snapDir); os.IsNotExist(err) {
@@ -151,8 +151,8 @@ func TestDoSnapshotCommands(t *testing.T) {
 		Name:     "test-ovl",
 		UpperDir: filepath.Join(tmpDir, "upper"),
 	}
-	os.MkdirAll(ovl.UpperDir, 0755)
-	store.Save(ovl)
+	_ = os.MkdirAll(ovl.UpperDir, 0755)
+	_ = store.Save(ovl)
 
 	// Test doSnapshotSave directly
 	runCommandWithArgs(t, []string{"save", "test-ovl", "--snapshot-name", "snap1"}, func() {

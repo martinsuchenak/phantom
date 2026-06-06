@@ -125,7 +125,7 @@ func TestRunShortCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		Name:       "test-overlay",
@@ -156,7 +156,7 @@ func TestRunWithTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		MountPoint: tmpDir,
@@ -184,7 +184,7 @@ func TestRunExitCodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		MountPoint: tmpDir,
@@ -196,12 +196,11 @@ func TestRunExitCodes(t *testing.T) {
 		Task:  "exit code task",
 	}
 
-	exitCode, err := runner.Run(context.Background(), overlay, opts)
+	exitCode, _ := runner.Run(context.Background(), overlay, opts)
 	if exitCode != 42 {
 		t.Errorf("expected exit code 42, got %d", exitCode)
 	}
 }
-
 
 func TestParseCommandLine(t *testing.T) {
 	tests := []struct {
@@ -286,7 +285,7 @@ func TestRunWithParsedCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		Name:       "test-overlay",
@@ -309,7 +308,6 @@ func TestRunWithParsedCommand(t *testing.T) {
 	}
 }
 
-
 func TestRunHeadless(t *testing.T) {
 	cfg := config.DefaultConfig()
 	log := &mockLogger{}
@@ -319,7 +317,7 @@ func TestRunHeadless(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		Name:       "headless-test",
@@ -351,7 +349,7 @@ func TestRunHeadlessWithTaskStdin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		Name:       "stdin-test",
@@ -383,7 +381,7 @@ func TestRunWithTaskPlaceholder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	overlay := &api.Overlay{
 		Name:       "placeholder-test",
@@ -410,7 +408,7 @@ func TestOpenLogFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg.Paths.Logs = filepath.Join(tmpDir, "logs")
 	log := &mockLogger{}
@@ -420,10 +418,10 @@ func TestOpenLogFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openLogFile failed: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Write something
-	f.WriteString("test log\n")
+	_, _ = f.WriteString("test log\n")
 
 	// Verify file exists
 	logPath := filepath.Join(tmpDir, "logs", "test-overlay.log")
@@ -435,7 +433,6 @@ func TestOpenLogFile(t *testing.T) {
 		t.Errorf("log content = %q, want %q", string(data), "test log\n")
 	}
 }
-
 
 func TestBuildCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -478,7 +475,6 @@ func TestBuildEnv_NoTask(t *testing.T) {
 	}
 }
 
-
 func TestHandleGitOperations(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Git.AutoPushOnStop = false
@@ -489,7 +485,7 @@ func TestHandleGitOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize a git repo
 	initGit(t, tmpDir)
@@ -504,7 +500,7 @@ func TestHandleGitOperations(t *testing.T) {
 	runner.handleGitOperations(context.Background(), overlay, true)
 
 	// Create a change
-	os.WriteFile(filepath.Join(tmpDir, "new-file.txt"), []byte("change"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "new-file.txt"), []byte("change"), 0644)
 
 	// Now there are changes — should commit
 	runner.handleGitOperations(context.Background(), overlay, true)

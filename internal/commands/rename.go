@@ -82,7 +82,7 @@ func doRename(ctx context.Context, cmd *cli.Command) error {
 	oldLog := filepath.Join(cfg.GetLogsPath(), oldName+".log")
 	newLog := filepath.Join(cfg.GetLogsPath(), newName+".log")
 	if _, err := os.Stat(oldLog); err == nil {
-		os.Rename(oldLog, newLog) // best effort
+		_ = os.Rename(oldLog, newLog) // best effort
 	}
 
 	// Update state
@@ -93,7 +93,7 @@ func doRename(ctx context.Context, cmd *cli.Command) error {
 	if err := store.Save(ovl); err != nil {
 		return fmt.Errorf("failed to save new state: %w", err)
 	}
-	store.Delete(oldName)
+	_ = store.Delete(oldName)
 
 	log.Info("Renamed %q -> %q", oldName, newName)
 	return nil

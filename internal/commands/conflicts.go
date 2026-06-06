@@ -30,11 +30,6 @@ func NewConflictsCommand() *cli.Command {
 	}
 }
 
-type conflictEntry struct {
-	File     string   `json:"file"`
-	Overlays []string `json:"overlays"`
-}
-
 func doConflicts(ctx context.Context, cmd *cli.Command) error {
 	namesArg := cmd.GetStringArg("overlays")
 	format := cmd.GetString("format")
@@ -68,7 +63,7 @@ func doConflicts(ctx context.Context, cmd *cli.Command) error {
 			continue
 		}
 
-		filepath.Walk(ovl.UpperDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(ovl.UpperDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -132,8 +127,8 @@ func doConflicts(ctx context.Context, cmd *cli.Command) error {
 							tmpBase, err := os.CreateTemp("", "phantom-empty-base-*")
 							if err == nil {
 								// defer removal
-								defer os.Remove(tmpBase.Name())
-								tmpBase.Close()
+								defer func() { _ = os.Remove(tmpBase.Name()) }()
+								_ = tmpBase.Close()
 								baseFile = tmpBase.Name()
 							}
 						}
@@ -195,11 +190,11 @@ func doConflicts(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "STATUS\tFILE\tOVERLAYS")
+	_, _ = fmt.Fprintln(w, "STATUS\tFILE\tOVERLAYS")
 	for _, c := range conflicts {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", c.Description, c.File, strings.Join(c.Overlays, ", "))
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", c.Description, c.File, strings.Join(c.Overlays, ", "))
 	}
-	w.Flush()
+	_ = w.Flush()
 	fmt.Println()
 	log.Info("%d overlapping file(s) detected", len(conflicts))
 	log.Info("Merge Confidence Score: %d%%", score)

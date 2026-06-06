@@ -166,9 +166,9 @@ func doTemplateList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tAGENT\tTASK MODE\tDESCRIPTION")
+	_, _ = fmt.Fprintln(w, "NAME\tAGENT\tTASK MODE\tDESCRIPTION")
 	for _, t := range builtinTemplates {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, t.Agent, t.TaskMode, t.Description)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, t.Agent, t.TaskMode, t.Description)
 	}
 	return w.Flush()
 }

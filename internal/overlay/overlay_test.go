@@ -13,14 +13,11 @@ func TestNewManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Test Darwin Manager creation
-	dm, err := NewManager(tmpDir, "/usr/bin/unionfs", []string{"cow"}, false)
-	if err != nil {
-		// Might fail if unionfs not found, which is expected in CI
-		// But basic struct initialization should work if we pass paths
-	}
+	// May fail if unionfs not found in CI; that's expected.
+	dm, _ := NewManager(tmpDir, "/usr/bin/unionfs", []string{"cow"}, false)
 	if dm != nil && dm.stateDir != tmpDir {
 		t.Error("darwin manager state dir mismatch")
 	}
@@ -32,10 +29,10 @@ func TestDirectoryCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.Mkdir(baseDir, 0755)
+	_ = os.Mkdir(baseDir, 0755)
 
 	// We can't easily test Create() because it calls Mount() which executes commands.
 	// But we can test helper functions if we export them or structure them better.
@@ -59,13 +56,12 @@ func TestDirectoryCreation(t *testing.T) {
 	}
 }
 
-
 func TestGetStatus(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "phantom-overlay-status-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Save original execCommand and restore after test
 	origExec := execCommand
@@ -82,11 +78,11 @@ func TestGetStatus(t *testing.T) {
 
 	// Create upper dir with some files
 	upperDir := filepath.Join(tmpDir, "overlays", "test", "upper")
-	os.MkdirAll(upperDir, 0755)
-	os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("hello"), 0644)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("hello"), 0644)
 
 	mountPoint := filepath.Join(tmpDir, "mnt", "test")
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 
 	overlay := &api.Overlay{
 		Name:       "test",
@@ -95,8 +91,8 @@ func TestGetStatus(t *testing.T) {
 	}
 
 	// Set mounted paths env for the mock
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	status, err := dm.GetStatus(overlay)
 	if err != nil {
@@ -119,7 +115,7 @@ func TestGetStatus_Unmounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -140,7 +136,7 @@ func TestGetStatus_Unmounted(t *testing.T) {
 	}
 
 	// No mounted paths
-	os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
 	status, err := dm.GetStatus(overlay)
 	if err != nil {
@@ -156,7 +152,7 @@ func TestIsMounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -173,7 +169,7 @@ func TestIsMounted(t *testing.T) {
 	overlay := &api.Overlay{MountPoint: mountPoint}
 
 	// Not mounted
-	os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 	mounted, err := dm.IsMounted(overlay)
 	if err != nil {
 		t.Fatalf("IsMounted failed: %v", err)
@@ -183,8 +179,8 @@ func TestIsMounted(t *testing.T) {
 	}
 
 	// Mounted
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 	mounted, err = dm.IsMounted(overlay)
 	if err != nil {
 		t.Fatalf("IsMounted failed: %v", err)
@@ -199,7 +195,7 @@ func TestUnmount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -213,7 +209,7 @@ func TestUnmount(t *testing.T) {
 	}
 
 	mountPoint := filepath.Join(tmpDir, "mnt", "test")
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 
 	overlay := &api.Overlay{
 		Name:       "test",
@@ -222,8 +218,8 @@ func TestUnmount(t *testing.T) {
 	}
 
 	// Set as mounted
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	err = dm.Unmount(overlay)
 	if err != nil {
@@ -236,7 +232,7 @@ func TestUnmount_NotMounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -247,7 +243,7 @@ func TestUnmount_NotMounted(t *testing.T) {
 	}
 
 	overlay := &api.Overlay{MountPoint: "/nonexistent"}
-	os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
 	err = dm.Unmount(overlay)
 	if err != nil {
@@ -260,7 +256,7 @@ func TestCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -268,8 +264,8 @@ func TestCleanup(t *testing.T) {
 
 	overlaysDir := filepath.Join(tmpDir, "overlays")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(overlaysDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(overlaysDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -281,8 +277,8 @@ func TestCleanup(t *testing.T) {
 	// Create overlay dirs
 	overlayDir := filepath.Join(overlaysDir, "test")
 	mountPoint := filepath.Join(mountDir, "test")
-	os.MkdirAll(filepath.Join(overlayDir, "upper"), 0755)
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(filepath.Join(overlayDir, "upper"), 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 
 	overlay := &api.Overlay{
 		Name:       "test",
@@ -290,7 +286,7 @@ func TestCleanup(t *testing.T) {
 		UpperDir:   filepath.Join(overlayDir, "upper"),
 	}
 
-	os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
 	err = dm.Cleanup(overlay)
 	if err != nil {
@@ -310,7 +306,7 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -318,8 +314,8 @@ func TestPrune(t *testing.T) {
 
 	overlaysDir := filepath.Join(tmpDir, "overlays")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(overlaysDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(overlaysDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -329,9 +325,9 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Create an overlay dir with no mount point (orphan)
-	os.MkdirAll(filepath.Join(overlaysDir, "orphan"), 0755)
+	_ = os.MkdirAll(filepath.Join(overlaysDir, "orphan"), 0755)
 
-	os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
 	err = dm.Prune()
 	if err != nil {
@@ -349,7 +345,7 @@ func TestForceUnmount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -370,13 +366,12 @@ func TestForceUnmount(t *testing.T) {
 	}
 }
 
-
 func TestCreate(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "phantom-overlay-create-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -384,8 +379,8 @@ func TestCreate(t *testing.T) {
 
 	overlaysDir := filepath.Join(tmpDir, "overlays")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(overlaysDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(overlaysDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -396,12 +391,12 @@ func TestCreate(t *testing.T) {
 	}
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	// Set mount point as mounted for verification
 	mountPoint := filepath.Join(mountDir, "test-create")
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	opts := &api.CreateOptions{
 		Name:    "test-create",
@@ -427,7 +422,7 @@ func TestCreate_InvalidBaseDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -452,7 +447,7 @@ func TestCreate_BaseDirIsFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -462,7 +457,7 @@ func TestCreate_BaseDirIsFile(t *testing.T) {
 	}
 
 	filePath := filepath.Join(tmpDir, "notadir")
-	os.WriteFile(filePath, []byte("file"), 0644)
+	_ = os.WriteFile(filePath, []byte("file"), 0644)
 
 	opts := &api.CreateOptions{
 		Name:    "test",
@@ -518,13 +513,13 @@ func TestNewManager_NoUnionFS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Pass empty unionfs path and override PATH to empty dir
 	origPath := os.Getenv("PATH")
-	os.Setenv("PATH", filepath.Join(tmpDir, "emptybin"))
-	os.MkdirAll(filepath.Join(tmpDir, "emptybin"), 0755)
-	defer os.Setenv("PATH", origPath)
+	_ = os.Setenv("PATH", filepath.Join(tmpDir, "emptybin"))
+	_ = os.MkdirAll(filepath.Join(tmpDir, "emptybin"), 0755)
+	defer func() { _ = os.Setenv("PATH", origPath) }()
 
 	_, err = NewManager(tmpDir, "", []string{"cow"}, false)
 	// On systems with unionfs installed in standard paths, this may succeed
@@ -537,11 +532,11 @@ func TestNewManager_WithPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a fake unionfs binary
 	fakeBin := filepath.Join(tmpDir, "unionfs-fuse")
-	os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755)
+	_ = os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755)
 
 	dm, err := NewManager(tmpDir, fakeBin, nil, false)
 	if err != nil {
@@ -556,13 +551,12 @@ func TestNewManager_WithPath(t *testing.T) {
 	}
 }
 
-
 func TestCreate_SymlinkBaseDir(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "phantom-overlay-symlink-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -575,14 +569,14 @@ func TestCreate_SymlinkBaseDir(t *testing.T) {
 		unionfsPath: "unionfs-fuse",
 		fuseOptions: []string{"cow"},
 	}
-	os.MkdirAll(dm.overlaysDir, 0755)
-	os.MkdirAll(dm.mountDir, 0755)
+	_ = os.MkdirAll(dm.overlaysDir, 0755)
+	_ = os.MkdirAll(dm.mountDir, 0755)
 
 	// Create a real dir and a symlink to it
 	realDir := filepath.Join(tmpDir, "real")
-	os.MkdirAll(realDir, 0755)
+	_ = os.MkdirAll(realDir, 0755)
 	linkDir := filepath.Join(tmpDir, "link")
-	os.Symlink(realDir, linkDir)
+	_ = os.Symlink(realDir, linkDir)
 
 	opts := &api.CreateOptions{
 		Name:    "test",
@@ -600,7 +594,7 @@ func TestPrune_WithMountedOverlay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -608,8 +602,8 @@ func TestPrune_WithMountedOverlay(t *testing.T) {
 
 	overlaysDir := filepath.Join(tmpDir, "overlays")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(overlaysDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(overlaysDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -619,13 +613,13 @@ func TestPrune_WithMountedOverlay(t *testing.T) {
 	}
 
 	// Create overlay dir with existing mount point (mounted)
-	os.MkdirAll(filepath.Join(overlaysDir, "mounted-ovl"), 0755)
+	_ = os.MkdirAll(filepath.Join(overlaysDir, "mounted-ovl"), 0755)
 	mountPoint := filepath.Join(mountDir, "mounted-ovl")
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 
 	// Set as mounted
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	err = dm.Prune()
 	if err != nil {
@@ -655,7 +649,7 @@ func TestCleanup_WithMounted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -663,8 +657,8 @@ func TestCleanup_WithMounted(t *testing.T) {
 
 	overlaysDir := filepath.Join(tmpDir, "overlays")
 	mountDir := filepath.Join(tmpDir, "mnt")
-	os.MkdirAll(overlaysDir, 0755)
-	os.MkdirAll(mountDir, 0755)
+	_ = os.MkdirAll(overlaysDir, 0755)
+	_ = os.MkdirAll(mountDir, 0755)
 
 	dm := &DarwinManager{
 		stateDir:    tmpDir,
@@ -675,8 +669,8 @@ func TestCleanup_WithMounted(t *testing.T) {
 
 	overlayDir := filepath.Join(overlaysDir, "test")
 	mountPoint := filepath.Join(mountDir, "test")
-	os.MkdirAll(filepath.Join(overlayDir, "upper"), 0755)
-	os.MkdirAll(mountPoint, 0755)
+	_ = os.MkdirAll(filepath.Join(overlayDir, "upper"), 0755)
+	_ = os.MkdirAll(mountPoint, 0755)
 
 	overlay := &api.Overlay{
 		Name:       "test",
@@ -686,15 +680,14 @@ func TestCleanup_WithMounted(t *testing.T) {
 	}
 
 	// Set as mounted — Cleanup should unmount first
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	err = dm.Cleanup(overlay)
 	if err != nil {
 		t.Errorf("Cleanup with mounted overlay failed: %v", err)
 	}
 }
-
 
 func TestKillUnionFSProcess_ValidPID(t *testing.T) {
 	origExec := execCommand
@@ -716,7 +709,7 @@ func TestMount_MountPointCreation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -732,7 +725,7 @@ func TestMount_MountPointCreation(t *testing.T) {
 
 	mountPoint := filepath.Join(tmpDir, "mnt", "test-mount")
 	upperDir := filepath.Join(tmpDir, "overlays", "test-mount", "upper")
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	overlay := &api.Overlay{
 		Name:       "test-mount",
@@ -742,8 +735,8 @@ func TestMount_MountPointCreation(t *testing.T) {
 	}
 
 	// Set as mounted for verification
-	os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
-	defer os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Setenv("GO_TEST_MOUNTED_PATHS", mountPoint)
+	defer func() { _ = os.Unsetenv("GO_TEST_MOUNTED_PATHS") }()
 
 	err = dm.Mount(overlay)
 	if err != nil {
@@ -756,13 +749,12 @@ func TestMount_MountPointCreation(t *testing.T) {
 	}
 }
 
-
 func TestCleanup_AlreadyCleaned(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "phantom-overlay-cleanup-clean-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	origExec := execCommand
 	defer func() { execCommand = origExec }()
@@ -774,8 +766,8 @@ func TestCleanup_AlreadyCleaned(t *testing.T) {
 		mountDir:    filepath.Join(tmpDir, "mnt"),
 		unionfsPath: "unionfs-fuse",
 	}
-	os.MkdirAll(dm.overlaysDir, 0755)
-	os.MkdirAll(dm.mountDir, 0755)
+	_ = os.MkdirAll(dm.overlaysDir, 0755)
+	_ = os.MkdirAll(dm.mountDir, 0755)
 
 	// Overlay with dirs that don't exist (already cleaned)
 	overlay := &api.Overlay{
@@ -784,7 +776,7 @@ func TestCleanup_AlreadyCleaned(t *testing.T) {
 		UpperDir:   filepath.Join(dm.overlaysDir, "gone", "upper"),
 	}
 
-	os.Unsetenv("GO_TEST_MOUNTED_PATHS")
+	_ = os.Unsetenv("GO_TEST_MOUNTED_PATHS")
 
 	err = dm.Cleanup(overlay)
 	if err != nil {
@@ -797,15 +789,15 @@ func TestFindUnionFS_WithMockPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a fake unionfs binary in a temp dir
 	fakeBin := filepath.Join(tmpDir, "unionfs")
-	os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755)
+	_ = os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0755)
 
 	origPath := os.Getenv("PATH")
-	os.Setenv("PATH", tmpDir+string(os.PathListSeparator)+origPath)
-	defer os.Setenv("PATH", origPath)
+	_ = os.Setenv("PATH", tmpDir+string(os.PathListSeparator)+origPath)
+	defer func() { _ = os.Setenv("PATH", origPath) }()
 
 	result := findUnionFS()
 	if result == "" {

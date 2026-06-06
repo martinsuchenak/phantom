@@ -22,12 +22,12 @@ func TestDoRename_Basic(t *testing.T) {
 
 	// Create overlay directories
 	oldOverlayDir := filepath.Join(cfg.GetOverlaysPath(), "old-name")
-	os.MkdirAll(filepath.Join(oldOverlayDir, "upper"), 0755)
+	_ = os.MkdirAll(filepath.Join(oldOverlayDir, "upper"), 0755)
 	oldMountDir := filepath.Join(cfg.GetMountPath(), "old-name")
-	os.MkdirAll(oldMountDir, 0755)
+	_ = os.MkdirAll(oldMountDir, 0755)
 	oldLogFile := filepath.Join(cfg.GetLogsPath(), "old-name.log")
-	os.MkdirAll(cfg.GetLogsPath(), 0755)
-	os.WriteFile(oldLogFile, []byte("log data"), 0644)
+	_ = os.MkdirAll(cfg.GetLogsPath(), 0755)
+	_ = os.WriteFile(oldLogFile, []byte("log data"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "old-name",
@@ -36,7 +36,7 @@ func TestDoRename_Basic(t *testing.T) {
 		UpperDir:   filepath.Join(oldOverlayDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["old-name"] = false
 
 	// We need to call the rename logic directly since doRename needs cli.Command
@@ -54,16 +54,16 @@ func TestDoRename_Basic(t *testing.T) {
 
 	// Rename directories
 	newOverlayDir := filepath.Join(cfg.GetOverlaysPath(), "new-name")
-	os.Rename(oldOverlayDir, newOverlayDir)
+	_ = os.Rename(oldOverlayDir, newOverlayDir)
 	newMountDir := filepath.Join(cfg.GetMountPath(), "new-name")
-	os.Rename(oldMountDir, newMountDir)
+	_ = os.Rename(oldMountDir, newMountDir)
 
 	// Update state
 	loaded.Name = "new-name"
 	loaded.UpperDir = filepath.Join(newOverlayDir, "upper")
 	loaded.MountPoint = newMountDir
-	store.Save(loaded)
-	store.Delete("old-name")
+	_ = store.Save(loaded)
+	_ = store.Delete("old-name")
 
 	// Verify
 	if store.Exists("old-name") {

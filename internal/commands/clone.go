@@ -79,7 +79,7 @@ func doClone(ctx context.Context, cmd *cli.Command) error {
 
 	// Copy source upper dir contents to new upper dir
 	if err := copyDir(srcOvl.UpperDir, newOvl.UpperDir); err != nil {
-		mgr.Cleanup(newOvl)
+		_ = mgr.Cleanup(newOvl)
 		return fmt.Errorf("failed to copy overlay data: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func doClone(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	if err := store.Save(newOvl); err != nil {
-		mgr.Cleanup(newOvl)
+		_ = mgr.Cleanup(newOvl)
 		return fmt.Errorf("failed to save state: %w", err)
 	}
 

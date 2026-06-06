@@ -50,7 +50,7 @@ func doSnapshotSave(ctx context.Context, cmd *cli.Command) error {
 	}
 	upperDataDir := filepath.Join(snapDir, "data")
 	if err := copyDir(ovl.UpperDir, upperDataDir); err != nil {
-		os.RemoveAll(snapDir)
+		_ = os.RemoveAll(snapDir)
 		return fmt.Errorf("failed to copy overlay data: %w", err)
 	}
 	size := dirSize(upperDataDir)
@@ -60,11 +60,11 @@ func doSnapshotSave(ctx context.Context, cmd *cli.Command) error {
 	}
 	metaData, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
-		os.RemoveAll(snapDir)
+		_ = os.RemoveAll(snapDir)
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(snapDir, "meta.json"), metaData, 0600); err != nil {
-		os.RemoveAll(snapDir)
+		_ = os.RemoveAll(snapDir)
 		return err
 	}
 	log.Info("Snapshot %q saved (%s)", snapName, formatSize(size))
@@ -151,9 +151,9 @@ func doSnapshotList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "SNAPSHOT\tOVERLAY\tCREATED\tSIZE")
+	_, _ = fmt.Fprintln(w, "SNAPSHOT\tOVERLAY\tCREATED\tSIZE")
 	for _, s := range snapshots {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.Name, s.Overlay,
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.Name, s.Overlay,
 			s.CreatedAt.Format("2006-01-02 15:04"), formatSize(s.SizeBytes))
 	}
 	return w.Flush()

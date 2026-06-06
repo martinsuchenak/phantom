@@ -34,18 +34,18 @@ func NewHealthCommand() *cli.Command {
 }
 
 type healthIssue struct {
-	Overlay  string `json:"overlay"`
-	Kind     string `json:"kind"`     // "stale_mount", "missing_upper", "missing_base", "zombie"
-	Message  string `json:"message"`
-	Fixed    bool   `json:"fixed,omitempty"`
+	Overlay string `json:"overlay"`
+	Kind    string `json:"kind"` // "stale_mount", "missing_upper", "missing_base", "zombie"
+	Message string `json:"message"`
+	Fixed   bool   `json:"fixed,omitempty"`
 }
 
 type healthReport struct {
-	Platform    string        `json:"platform"`
-	FuseOK      bool          `json:"fuse_available"`
-	Overlays    int           `json:"total_overlays"`
-	Healthy     int           `json:"healthy"`
-	Issues      []healthIssue `json:"issues,omitempty"`
+	Platform string        `json:"platform"`
+	FuseOK   bool          `json:"fuse_available"`
+	Overlays int           `json:"total_overlays"`
+	Healthy  int           `json:"healthy"`
+	Issues   []healthIssue `json:"issues,omitempty"`
 }
 
 func doHealth(ctx context.Context, cmd *cli.Command) error {
@@ -212,9 +212,9 @@ func printHealthReport(report healthReport, format string) error {
 
 	fmt.Println()
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "OVERLAY\tISSUE\tDETAILS")
+	_, _ = fmt.Fprintln(w, "OVERLAY\tISSUE\tDETAILS")
 	for _, issue := range report.Issues {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", issue.Overlay, issue.Kind, issue.Message)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", issue.Overlay, issue.Kind, issue.Message)
 	}
 	return w.Flush()
 }

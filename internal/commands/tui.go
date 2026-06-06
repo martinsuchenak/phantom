@@ -130,7 +130,7 @@ func RunWithTUI(ctx context.Context, status string, logic func(ctx context.Conte
 		logicErr = logic(ctx, t)
 	}()
 
-	t.Run(ctx)
+	_ = t.Run(ctx)
 	wg.Wait()
 
 	// Restore normal logger

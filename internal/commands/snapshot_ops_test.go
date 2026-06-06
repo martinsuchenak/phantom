@@ -17,8 +17,8 @@ func TestSnapshotSaveAndList(t *testing.T) {
 
 	// Create overlay with upper dir containing files
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(upperDir, 0755)
-	os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("snapshot data"), 0644)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("snapshot data"), 0644)
 
 	ovl := &api.Overlay{
 		Name:       "snap-overlay",
@@ -27,12 +27,12 @@ func TestSnapshotSaveAndList(t *testing.T) {
 		UpperDir:   upperDir,
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 
 	// Manually save a snapshot (simulating doSnapshotSave)
 	snapName := "test-snapshot"
 	snapDir := filepath.Join(cfg.GetSnapshotsPath(), snapName)
-	os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
+	_ = os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
 
 	if err := copyDir(upperDir, filepath.Join(snapDir, "data")); err != nil {
 		t.Fatalf("failed to copy: %v", err)
@@ -45,7 +45,7 @@ func TestSnapshotSaveAndList(t *testing.T) {
 		SizeBytes: dirSize(filepath.Join(snapDir, "data")),
 	}
 	metaData, _ := json.MarshalIndent(meta, "", "  ")
-	os.WriteFile(filepath.Join(snapDir, "meta.json"), metaData, 0600)
+	_ = os.WriteFile(filepath.Join(snapDir, "meta.json"), metaData, 0600)
 
 	// Verify snapshot exists
 	if _, err := os.Stat(filepath.Join(snapDir, "data", "file.txt")); os.IsNotExist(err) {
@@ -55,7 +55,7 @@ func TestSnapshotSaveAndList(t *testing.T) {
 	// Verify meta
 	data, _ := os.ReadFile(filepath.Join(snapDir, "meta.json"))
 	var loaded snapshotMeta
-	json.Unmarshal(data, &loaded)
+	_ = json.Unmarshal(data, &loaded)
 	if loaded.Name != snapName {
 		t.Errorf("expected name %q, got %q", snapName, loaded.Name)
 	}
@@ -73,16 +73,16 @@ func TestSnapshotRestore(t *testing.T) {
 
 	// Create snapshot data
 	snapDir := filepath.Join(cfg.GetSnapshotsPath(), "restore-snap")
-	os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
-	os.WriteFile(filepath.Join(snapDir, "data", "restored.txt"), []byte("restored"), 0644)
+	_ = os.MkdirAll(filepath.Join(snapDir, "data"), 0700)
+	_ = os.WriteFile(filepath.Join(snapDir, "data", "restored.txt"), []byte("restored"), 0644)
 
 	// Create target upper dir
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(upperDir, 0755)
-	os.WriteFile(filepath.Join(upperDir, "old.txt"), []byte("old"), 0644)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "old.txt"), []byte("old"), 0644)
 
 	// Simulate restore: clear upper, copy snapshot data
-	os.RemoveAll(upperDir)
+	_ = os.RemoveAll(upperDir)
 	if err := copyDir(filepath.Join(snapDir, "data"), upperDir); err != nil {
 		t.Fatalf("restore failed: %v", err)
 	}
@@ -115,9 +115,9 @@ func TestSnapshotListFiltering(t *testing.T) {
 		{"snap-c", "overlay-a"},
 	} {
 		dir := filepath.Join(snapshotsDir, s.name)
-		os.MkdirAll(dir, 0700)
+		_ = os.MkdirAll(dir, 0700)
 		meta, _ := json.Marshal(snapshotMeta{Name: s.name, Overlay: s.overlay})
-		os.WriteFile(filepath.Join(dir, "meta.json"), meta, 0600)
+		_ = os.WriteFile(filepath.Join(dir, "meta.json"), meta, 0600)
 	}
 
 	// Read all snapshots
@@ -129,7 +129,7 @@ func TestSnapshotListFiltering(t *testing.T) {
 		}
 		data, _ := os.ReadFile(filepath.Join(snapshotsDir, e.Name(), "meta.json"))
 		var m snapshotMeta
-		json.Unmarshal(data, &m)
+		_ = json.Unmarshal(data, &m)
 		all = append(all, m)
 	}
 

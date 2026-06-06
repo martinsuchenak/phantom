@@ -15,7 +15,7 @@ import (
 type HookDef struct {
 	Name    string `yaml:"name" json:"name"`
 	On      string `yaml:"on" json:"on"`           // "success", "failure", "always"
-	Command string `yaml:"command" json:"command"`  // shell command to run
+	Command string `yaml:"command" json:"command"` // shell command to run
 }
 
 // HooksConfig is the YAML structure for hooks file

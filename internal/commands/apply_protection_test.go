@@ -18,13 +18,13 @@ func TestApplyProtection(t *testing.T) {
 
 	// Create a base directory
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	protectedFile := filepath.Join(baseDir, "protected.txt")
-	os.WriteFile(protectedFile, []byte("original content"), 0644)
+	_ = os.WriteFile(protectedFile, []byte("original content"), 0644)
 
 	// Create .phantomignore
-	os.WriteFile(filepath.Join(baseDir, ".phantomignore"), []byte("protected.txt\nconfig/"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, ".phantomignore"), []byte("protected.txt\nconfig/"), 0644)
 
 	// Create an overlay
 	ovlStore, err := state.NewStore(cfg.GetStatePath())
@@ -37,14 +37,14 @@ func TestApplyProtection(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		MountPoint: filepath.Join(tmpDir, "mnt"),
 	}
-	os.MkdirAll(ovl.UpperDir, 0755)
-	os.MkdirAll(ovl.MountPoint, 0755)
-	ovlStore.Save(ovl)
+	_ = os.MkdirAll(ovl.UpperDir, 0755)
+	_ = os.MkdirAll(ovl.MountPoint, 0755)
+	_ = ovlStore.Save(ovl)
 	mockMgr.mounted[ovl.Name] = true
 
 	t.Run("Modifying protected file should fail apply", func(t *testing.T) {
 		// Simulate modification in upper dir
-		os.WriteFile(filepath.Join(ovl.UpperDir, "protected.txt"), []byte("hacked content"), 0644)
+		_ = os.WriteFile(filepath.Join(ovl.UpperDir, "protected.txt"), []byte("hacked content"), 0644)
 
 		err := processApply(context.Background(), "test-ovl", false, false, false)
 		if err == nil {
@@ -57,8 +57,8 @@ func TestApplyProtection(t *testing.T) {
 
 	t.Run("Modifying protected directory should fail apply", func(t *testing.T) {
 		// Simulate modification in a protected directory
-		os.MkdirAll(filepath.Join(ovl.UpperDir, "config"), 0755)
-		os.WriteFile(filepath.Join(ovl.UpperDir, "config", "settings.json"), []byte("{}"), 0644)
+		_ = os.MkdirAll(filepath.Join(ovl.UpperDir, "config"), 0755)
+		_ = os.WriteFile(filepath.Join(ovl.UpperDir, "config", "settings.json"), []byte("{}"), 0644)
 
 		err := processApply(context.Background(), "test-ovl", false, false, false)
 		if err == nil {
@@ -71,7 +71,7 @@ func TestApplyProtection(t *testing.T) {
 
 	t.Run("Deleting protected file should fail apply", func(t *testing.T) {
 		// Simulate deletion (whiteout) in upper dir
-		os.WriteFile(filepath.Join(ovl.UpperDir, ".wh.protected.txt"), []byte(""), 0644)
+		_ = os.WriteFile(filepath.Join(ovl.UpperDir, ".wh.protected.txt"), []byte(""), 0644)
 
 		err := processApply(context.Background(), "test-ovl", false, false, false)
 		if err == nil {
@@ -84,13 +84,13 @@ func TestApplyProtection(t *testing.T) {
 
 	t.Run("Modifying non-protected file should succeed", func(t *testing.T) {
 		// Cleanup upper dir first
-		os.RemoveAll(ovl.UpperDir)
-		os.MkdirAll(ovl.UpperDir, 0755)
+		_ = os.RemoveAll(ovl.UpperDir)
+		_ = os.MkdirAll(ovl.UpperDir, 0755)
 
-		os.WriteFile(filepath.Join(ovl.UpperDir, "safe.txt"), []byte("new file"), 0644)
+		_ = os.WriteFile(filepath.Join(ovl.UpperDir, "safe.txt"), []byte("new file"), 0644)
 
 		// Map safe.txt to mount point so applyFileCopy sees it (processApply calls applyFileCopy which walks MountPoint, NOT UpperDir for non-git)
-		os.WriteFile(filepath.Join(ovl.MountPoint, "safe.txt"), []byte("new file"), 0644)
+		_ = os.WriteFile(filepath.Join(ovl.MountPoint, "safe.txt"), []byte("new file"), 0644)
 
 		err := processApply(context.Background(), "test-ovl", false, false, false)
 		if err != nil {

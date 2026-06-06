@@ -18,11 +18,11 @@ func TestCLILogger(t *testing.T) {
 
 	logger.Info("hello %s", "world")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	if buf.String() != "hello world\n" {
 		t.Errorf("Info output = %q, want %q", buf.String(), "hello world\n")
 	}
@@ -33,11 +33,11 @@ func TestCLILogger(t *testing.T) {
 
 	logger.Debug("debug msg")
 
-	w2.Close()
+	_ = w2.Close()
 	os.Stdout = old
 
 	var buf2 bytes.Buffer
-	buf2.ReadFrom(r2)
+	_, _ = buf2.ReadFrom(r2)
 	if buf2.String() != "" {
 		t.Errorf("Debug should not print when not verbose, got %q", buf2.String())
 	}
@@ -52,11 +52,11 @@ func TestCLILogger_Verbose(t *testing.T) {
 
 	logger.Debug("debug %s", "msg")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	if buf.String() != "[DEBUG] debug msg\n" {
 		t.Errorf("Debug output = %q, want %q", buf.String(), "[DEBUG] debug msg\n")
 	}
@@ -71,11 +71,11 @@ func TestCLILogger_Trace(t *testing.T) {
 
 	logger.Trace("trace %s", "msg")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	if buf.String() != "[TRACE] trace msg\n" {
 		t.Errorf("Trace output = %q, want %q", buf.String(), "[TRACE] trace msg\n")
 	}
@@ -90,11 +90,11 @@ func TestCLILogger_Warn(t *testing.T) {
 
 	logger.Warn("warn %s", "msg")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	if buf.String() != "[WARN] warn msg\n" {
 		t.Errorf("Warn output = %q, want %q", buf.String(), "[WARN] warn msg\n")
 	}
@@ -109,11 +109,11 @@ func TestCLILogger_Error(t *testing.T) {
 
 	logger.Error("error %s", "msg")
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	if buf.String() != "[ERROR] error msg\n" {
 		t.Errorf("Error output = %q, want %q", buf.String(), "[ERROR] error msg\n")
 	}

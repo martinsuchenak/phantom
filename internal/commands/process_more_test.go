@@ -18,7 +18,7 @@ func TestProcessStart_Basic(t *testing.T) {
 	_ = mock
 
 	baseDir := filepath.Join(tmpDir, "myrepo")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	err := processStart(context.Background(), baseDir, "test-start", "", false)
 	if err != nil {
@@ -45,7 +45,7 @@ func TestProcessStart_AlreadyExists(t *testing.T) {
 	_ = mock
 
 	ovl := testOverlay("existing", tmpDir, filepath.Join(tmpDir, "mnt"), filepath.Join(tmpDir, "upper"))
-	store.Save(&ovl)
+	_ = store.Save(&ovl)
 
 	err := processStart(context.Background(), tmpDir, "existing", "", false)
 	if err == nil {
@@ -59,7 +59,7 @@ func TestProcessStart_Persistent(t *testing.T) {
 	setupMockManager(t)
 
 	baseDir := filepath.Join(tmpDir, "repo")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	err := processStart(context.Background(), baseDir, "persistent-test", "", true)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestProcessStart_WithBranch(t *testing.T) {
 	setupMockManager(t)
 
 	baseDir := filepath.Join(tmpDir, "repo")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	err := processStart(context.Background(), baseDir, "branch-test", "feature/test", false)
 	if err != nil {
@@ -108,7 +108,7 @@ func TestRunAutoCleanup_WithExpiredOverlays(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now().Add(-30 * 24 * time.Hour),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["expired-overlay"] = false
 
 	runAutoCleanup()
@@ -134,7 +134,7 @@ func TestRunAutoCleanup_SkipsPersistent(t *testing.T) {
 		Persistent: true,
 		CreatedAt:  time.Now().Add(-30 * 24 * time.Hour),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["persistent-old"] = false
 
 	runAutoCleanup()
@@ -160,7 +160,7 @@ func TestRunAutoCleanup_SkipsLocked(t *testing.T) {
 		Locked:     true,
 		CreatedAt:  time.Now().Add(-30 * 24 * time.Hour),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["locked-old"] = false
 
 	runAutoCleanup()
@@ -185,7 +185,7 @@ func TestRunAutoCleanup_SkipsMounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now().Add(-30 * 24 * time.Hour),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["mounted-old"] = true
 
 	runAutoCleanup()
@@ -209,7 +209,7 @@ overlay:
 agent:
   default_timeout_minutes: 60
 `
-	os.WriteFile(configPath, []byte(validConfig), 0600)
+	_ = os.WriteFile(configPath, []byte(validConfig), 0600)
 
 	_, err := config.Load(configPath)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestDoConfigValidate_InvalidConfig(t *testing.T) {
 	invalidConfig := `logging:
   level: "invalid-level"
 `
-	os.WriteFile(configPath, []byte(invalidConfig), 0600)
+	_ = os.WriteFile(configPath, []byte(invalidConfig), 0600)
 
 	_, err := config.Load(configPath)
 	if err == nil {
@@ -245,7 +245,7 @@ func TestProcessStop_Unmounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["stop-unmounted"] = false
 
 	// Should succeed even if not mounted
@@ -268,7 +268,7 @@ func TestProcessStop_CleanupDeletesState(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["stop-delete"] = false
 
 	err := processStop(context.Background(), "stop-delete", true, false, false)

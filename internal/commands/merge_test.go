@@ -24,7 +24,7 @@ func TestPlanMerge_CopyFiles(t *testing.T) {
 	dstUpper := t.TempDir()
 
 	// Create a file in source
-	os.WriteFile(filepath.Join(srcUpper, "new.txt"), []byte("hello"), 0644)
+	_ = os.WriteFile(filepath.Join(srcUpper, "new.txt"), []byte("hello"), 0644)
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {
@@ -46,8 +46,8 @@ func TestPlanMerge_Conflict(t *testing.T) {
 	dstUpper := t.TempDir()
 
 	// Same file in both
-	os.WriteFile(filepath.Join(srcUpper, "shared.txt"), []byte("src"), 0644)
-	os.WriteFile(filepath.Join(dstUpper, "shared.txt"), []byte("dst"), 0644)
+	_ = os.WriteFile(filepath.Join(srcUpper, "shared.txt"), []byte("src"), 0644)
+	_ = os.WriteFile(filepath.Join(dstUpper, "shared.txt"), []byte("dst"), 0644)
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {
@@ -66,7 +66,7 @@ func TestPlanMerge_Whiteout(t *testing.T) {
 	dstUpper := t.TempDir()
 
 	// Create a whiteout file (deletion marker)
-	os.WriteFile(filepath.Join(srcUpper, ".wh.deleted.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(srcUpper, ".wh.deleted.txt"), []byte{}, 0644)
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {
@@ -88,10 +88,10 @@ func TestPlanMerge_SkipsWorkDir(t *testing.T) {
 	dstUpper := t.TempDir()
 
 	// Create work directory (should be skipped)
-	os.MkdirAll(filepath.Join(srcUpper, "work"), 0755)
-	os.WriteFile(filepath.Join(srcUpper, "work", "internal.txt"), []byte("skip"), 0644)
+	_ = os.MkdirAll(filepath.Join(srcUpper, "work"), 0755)
+	_ = os.WriteFile(filepath.Join(srcUpper, "work", "internal.txt"), []byte("skip"), 0644)
 	// Also a real file
-	os.WriteFile(filepath.Join(srcUpper, "real.txt"), []byte("keep"), 0644)
+	_ = os.WriteFile(filepath.Join(srcUpper, "real.txt"), []byte("keep"), 0644)
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {
@@ -125,8 +125,8 @@ func TestPlanMerge_NestedFiles(t *testing.T) {
 	srcUpper := t.TempDir()
 	dstUpper := t.TempDir()
 
-	os.MkdirAll(filepath.Join(srcUpper, "sub", "deep"), 0755)
-	os.WriteFile(filepath.Join(srcUpper, "sub", "deep", "file.go"), []byte("package main"), 0644)
+	_ = os.MkdirAll(filepath.Join(srcUpper, "sub", "deep"), 0755)
+	_ = os.WriteFile(filepath.Join(srcUpper, "sub", "deep", "file.go"), []byte("package main"), 0644)
 
 	actions, err := planMerge(srcUpper, dstUpper)
 	if err != nil {

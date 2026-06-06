@@ -26,7 +26,7 @@ func TestSentinelDetectsFile(t *testing.T) {
 	})
 
 	time.Sleep(50 * time.Millisecond)
-	os.WriteFile(filepath.Join(mountPoint, ".phantom_commit"), []byte("my commit msg\n"), 0644)
+	_ = os.WriteFile(filepath.Join(mountPoint, ".phantom_commit"), []byte("my commit msg\n"), 0644)
 
 	waitForTrigger(t, &triggered, 1, 2*time.Second)
 }
@@ -44,7 +44,7 @@ func TestSentinelDeletesFileAfterFiring(t *testing.T) {
 
 	sentinel := filepath.Join(mountPoint, ".phantom_commit")
 	time.Sleep(50 * time.Millisecond)
-	os.WriteFile(sentinel, []byte("test\n"), 0644)
+	_ = os.WriteFile(sentinel, []byte("test\n"), 0644)
 
 	waitForTrigger(t, &triggered, 1, 2*time.Second)
 

@@ -21,7 +21,7 @@ func TestLoadAgentsConfig_Valid(t *testing.T) {
     agent: "aider --message test"
 `
 	configPath := filepath.Join(tmpDir, "agents.yaml")
-	os.WriteFile(configPath, []byte(configContent), 0600)
+	_ = os.WriteFile(configPath, []byte(configContent), 0600)
 
 	agents, err := loadAgentsConfig(configPath)
 	if err != nil {
@@ -48,7 +48,7 @@ func TestLoadAgentsConfig_AutoName(t *testing.T) {
   - agent: "claude --print"
 `
 	configPath := filepath.Join(tmpDir, "agents.yaml")
-	os.WriteFile(configPath, []byte(configContent), 0600)
+	_ = os.WriteFile(configPath, []byte(configContent), 0600)
 
 	agents, err := loadAgentsConfig(configPath)
 	if err != nil {
@@ -68,7 +68,7 @@ func TestLoadAgentsConfig_WithTimeout(t *testing.T) {
     timeout: 120
 `
 	configPath := filepath.Join(tmpDir, "agents.yaml")
-	os.WriteFile(configPath, []byte(configContent), 0600)
+	_ = os.WriteFile(configPath, []byte(configContent), 0600)
 
 	agents, err := loadAgentsConfig(configPath)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestLoadAgentsConfig_WithTimeout(t *testing.T) {
 func TestGetConfigMode_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "bad.yaml")
-	os.WriteFile(configPath, []byte("{{invalid yaml"), 0600)
+	_ = os.WriteFile(configPath, []byte("{{invalid yaml"), 0600)
 
 	mode, _, _ := getConfigMode(configPath)
 	if mode != "parallel" {
@@ -115,7 +115,7 @@ func TestProcessRunAll(t *testing.T) {
 	log = &MockLogger{}
 
 	baseDir := filepath.Join(tmpDir, "base")
-	os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
 
 	mountPoint := filepath.Join(tmpDir, "state", "mnt", "agent-1")
 	updateMockMount(t, mockBinDir, mountPoint)

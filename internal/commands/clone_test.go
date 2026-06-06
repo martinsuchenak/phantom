@@ -17,8 +17,8 @@ func TestClone_TargetAlreadyExists(t *testing.T) {
 
 	src := &api.Overlay{Name: "src", BaseDir: tmpDir, CreatedAt: time.Now()}
 	dst := &api.Overlay{Name: "dst", BaseDir: tmpDir, CreatedAt: time.Now()}
-	store.Save(src)
-	store.Save(dst)
+	_ = store.Save(src)
+	_ = store.Save(dst)
 
 	// Simulating the check that doClone does
 	if store.Exists("dst") {
@@ -46,10 +46,10 @@ func TestClone_CopyUpperDir(t *testing.T) {
 
 	srcUpper := filepath.Join(tmpDir, "src-upper")
 	dstUpper := filepath.Join(tmpDir, "dst-upper")
-	os.MkdirAll(srcUpper, 0755)
-	os.WriteFile(filepath.Join(srcUpper, "code.go"), []byte("package main"), 0644)
-	os.MkdirAll(filepath.Join(srcUpper, "sub"), 0755)
-	os.WriteFile(filepath.Join(srcUpper, "sub", "nested.go"), []byte("package sub"), 0644)
+	_ = os.MkdirAll(srcUpper, 0755)
+	_ = os.WriteFile(filepath.Join(srcUpper, "code.go"), []byte("package main"), 0644)
+	_ = os.MkdirAll(filepath.Join(srcUpper, "sub"), 0755)
+	_ = os.WriteFile(filepath.Join(srcUpper, "sub", "nested.go"), []byte("package sub"), 0644)
 
 	err := copyDir(srcUpper, dstUpper)
 	if err != nil {

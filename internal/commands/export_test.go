@@ -21,15 +21,15 @@ func TestExportDiff(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	// Base has existing file
-	os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old content"), 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "existing.txt"), []byte("old content"), 0644)
 
 	// Upper has modified + new file
-	os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new content"), 0644)
-	os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("brand new"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "existing.txt"), []byte("new content"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "added.txt"), []byte("brand new"), 0644)
 
 	t.Run("stdout", func(t *testing.T) {
 		old := os.Stdout
@@ -38,10 +38,10 @@ func TestExportDiff(t *testing.T) {
 
 		err := exportDiff(upperDir, baseDir, "")
 
-		w.Close()
+		_ = w.Close()
 		os.Stdout = old
 		var buf bytes.Buffer
-		buf.ReadFrom(r)
+		_, _ = buf.ReadFrom(r)
 		output := buf.String()
 
 		if err != nil {
@@ -78,12 +78,12 @@ func TestExportDiffWithDeletion(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
 	// Base has a file that was deleted (whiteout in upper)
-	os.WriteFile(filepath.Join(baseDir, "removed.txt"), []byte("gone"), 0644)
-	os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
+	_ = os.WriteFile(filepath.Join(baseDir, "removed.txt"), []byte("gone"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, ".wh.removed.txt"), []byte{}, 0644)
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
@@ -91,10 +91,10 @@ func TestExportDiffWithDeletion(t *testing.T) {
 
 	err := exportDiff(upperDir, baseDir, "")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -111,10 +111,10 @@ func TestExportTar(t *testing.T) {
 
 	baseDir := filepath.Join(tmpDir, "base")
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(baseDir, 0755)
-	os.MkdirAll(upperDir, 0755)
+	_ = os.MkdirAll(baseDir, 0755)
+	_ = os.MkdirAll(upperDir, 0755)
 
-	os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("content"), 0644)
+	_ = os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("content"), 0644)
 
 	outPath := filepath.Join(tmpDir, "export.tar")
 	err := exportTar(upperDir, baseDir, outPath)
@@ -136,8 +136,8 @@ func TestExportTarGz(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	upperDir := filepath.Join(tmpDir, "upper")
-	os.MkdirAll(upperDir, 0755)
-	os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("content"), 0644)
+	_ = os.MkdirAll(upperDir, 0755)
+	_ = os.WriteFile(filepath.Join(upperDir, "file.txt"), []byte("content"), 0644)
 
 	outPath := filepath.Join(tmpDir, "export.tar.gz")
 	err := exportTar(upperDir, tmpDir, outPath)

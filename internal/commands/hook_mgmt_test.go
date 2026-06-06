@@ -25,10 +25,10 @@ func TestDoHookListEmpty(t *testing.T) {
 		t.Errorf("expected 0 hooks, got %d", len(hc.Hooks))
 	}
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 }
 
 func TestDoHookAddAndList(t *testing.T) {
@@ -62,7 +62,7 @@ func TestDoHookAddDuplicate(t *testing.T) {
 	hc := &HooksConfig{
 		Hooks: []HookDef{{Name: "dup", On: "success", Command: "echo"}},
 	}
-	saveHooks(hc)
+	_ = saveHooks(hc)
 
 	// Try adding duplicate
 	loaded, _ := loadHooks()
@@ -86,7 +86,7 @@ func TestDoHookRemoveByName(t *testing.T) {
 			{Name: "also-keep", On: "always", Command: "echo also"},
 		},
 	}
-	saveHooks(hc)
+	_ = saveHooks(hc)
 
 	// Remove the middle hook
 	loaded, _ := loadHooks()
@@ -97,7 +97,7 @@ func TestDoHookRemoveByName(t *testing.T) {
 		}
 	}
 	loaded.Hooks = remaining
-	saveHooks(loaded)
+	_ = saveHooks(loaded)
 
 	// Verify
 	final, _ := loadHooks()
@@ -118,7 +118,7 @@ func TestDoHookRemoveNotFound(t *testing.T) {
 	hc := &HooksConfig{
 		Hooks: []HookDef{{Name: "exists", On: "success", Command: "echo"}},
 	}
-	saveHooks(hc)
+	_ = saveHooks(hc)
 
 	loaded, _ := loadHooks()
 	found := false
@@ -145,7 +145,7 @@ func TestDoHookInit(t *testing.T) {
 
 	// Create example hooks file
 	example := "hooks:\n  - name: test\n    on: success\n    command: echo\n"
-	os.MkdirAll(filepath.Dir(path), 0700)
+	_ = os.MkdirAll(filepath.Dir(path), 0700)
 	if err := os.WriteFile(path, []byte(example), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -170,8 +170,8 @@ func TestDoHookInitAlreadyExists(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	path := hooksFilePath()
-	os.MkdirAll(filepath.Dir(path), 0700)
-	os.WriteFile(path, []byte("existing"), 0600)
+	_ = os.MkdirAll(filepath.Dir(path), 0700)
+	_ = os.WriteFile(path, []byte("existing"), 0600)
 
 	// Stat should succeed (file exists)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -189,7 +189,7 @@ func TestRunHooksForOverlay(t *testing.T) {
 			{Name: "marker", On: "always", Command: "touch " + marker},
 		},
 	}
-	saveHooks(hc)
+	_ = saveHooks(hc)
 
 	RunHooksForOverlay("test", tmpDir, tmpDir, "", "agent", "task", 0)
 

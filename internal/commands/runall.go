@@ -319,7 +319,7 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 				}
 
 				if saveErr := store.Save(ovl); saveErr != nil {
-					mgr.Cleanup(ovl)
+					_ = mgr.Cleanup(ovl)
 					log.Error("Failed to save state for %q: %v", def.Name, saveErr)
 					continue
 				}
@@ -376,7 +376,7 @@ func processRunAll(ctx context.Context, baseDir string, agents []agentDef, globa
 				if err := mgr.Cleanup(ac.ovl); err != nil {
 					log.Warn("Failed to cleanup %q: %v", ac.def.Name, err)
 				}
-				store.Delete(ac.def.Name)
+				_ = store.Delete(ac.def.Name)
 			}
 		} else {
 			for _, ac := range agentContexts {
@@ -439,7 +439,7 @@ func runSingleAgent(ctx context.Context, def agentDef, ovl *api.Overlay, absBase
 
 	if t != nil {
 		w := NewTUIWriter(t, def.Name, false)
-		defer w.Close()
+		defer func() { _ = w.Close() }()
 		runOpts.Stdout = w
 		runOpts.Stderr = w
 	}
@@ -473,7 +473,7 @@ func printRunAllSummary(results []agentResult, format string) error {
 	log.Info("=== Run Summary ===")
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "AGENT\tCOMMAND\tEXIT\tDURATION\tSTATUS")
+	_, _ = fmt.Fprintln(w, "AGENT\tCOMMAND\tEXIT\tDURATION\tSTATUS")
 
 	failed := 0
 	for _, r := range results {
@@ -487,7 +487,7 @@ func printRunAllSummary(results []agentResult, format string) error {
 			failed++
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
 			r.Name,
 			r.Agent,
 			r.ExitCode,
@@ -495,7 +495,7 @@ func printRunAllSummary(results []agentResult, format string) error {
 			status,
 		)
 	}
-	w.Flush()
+	_ = w.Flush()
 
 	fmt.Println()
 	if failed > 0 {

@@ -18,7 +18,7 @@ func TestParseLastRun(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	logsDir := cfg.GetLogsPath()
-	os.MkdirAll(logsDir, 0700)
+	_ = os.MkdirAll(logsDir, 0700)
 
 	t.Run("parses agent and task from log", func(t *testing.T) {
 		logContent := `=== Phantom Agent Log ===
@@ -43,7 +43,7 @@ Started:  2026-02-20T11:00:00Z
 
 more output
 `
-		os.WriteFile(filepath.Join(logsDir, "test-overlay.log"), []byte(logContent), 0600)
+		_ = os.WriteFile(filepath.Join(logsDir, "test-overlay.log"), []byte(logContent), 0600)
 
 		info, err := parseLastRun("test-overlay")
 		if err != nil {
@@ -66,7 +66,7 @@ more output
 	})
 
 	t.Run("empty log", func(t *testing.T) {
-		os.WriteFile(filepath.Join(logsDir, "empty.log"), []byte("just some output\n"), 0600)
+		_ = os.WriteFile(filepath.Join(logsDir, "empty.log"), []byte("just some output\n"), 0600)
 
 		info, err := parseLastRun("empty")
 		if err != nil {

@@ -12,9 +12,9 @@ func TestCopyDir(t *testing.T) {
 	dst := filepath.Join(tmpDir, "dst")
 
 	// Create source structure
-	os.MkdirAll(filepath.Join(src, "subdir"), 0755)
-	os.WriteFile(filepath.Join(src, "file1.txt"), []byte("hello"), 0644)
-	os.WriteFile(filepath.Join(src, "subdir", "file2.txt"), []byte("world"), 0644)
+	_ = os.MkdirAll(filepath.Join(src, "subdir"), 0755)
+	_ = os.WriteFile(filepath.Join(src, "file1.txt"), []byte("hello"), 0644)
+	_ = os.WriteFile(filepath.Join(src, "subdir", "file2.txt"), []byte("world"), 0644)
 
 	err := copyDir(src, dst)
 	if err != nil {
@@ -43,7 +43,7 @@ func TestCopyDirEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "empty-src")
 	dst := filepath.Join(tmpDir, "empty-dst")
-	os.MkdirAll(src, 0755)
+	_ = os.MkdirAll(src, 0755)
 
 	err := copyDir(src, dst)
 	if err != nil {
@@ -60,9 +60,9 @@ func TestCopyDirPreservesPermissions(t *testing.T) {
 	tmpDir := t.TempDir()
 	src := filepath.Join(tmpDir, "src")
 	dst := filepath.Join(tmpDir, "dst")
-	os.MkdirAll(src, 0755)
+	_ = os.MkdirAll(src, 0755)
 
-	os.WriteFile(filepath.Join(src, "script.sh"), []byte("#!/bin/sh\necho hi"), 0755)
+	_ = os.WriteFile(filepath.Join(src, "script.sh"), []byte("#!/bin/sh\necho hi"), 0755)
 
 	err := copyDir(src, dst)
 	if err != nil {
@@ -82,8 +82,8 @@ func TestCopyDirPreservesPermissions(t *testing.T) {
 func TestDirSize(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("hello"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "b.txt"), []byte("world!"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("hello"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "b.txt"), []byte("world!"), 0644)
 
 	size := dirSize(tmpDir)
 	if size != 11 { // 5 + 6
@@ -101,9 +101,9 @@ func TestDirSizeEmpty(t *testing.T) {
 
 func TestDirSizeNested(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.MkdirAll(filepath.Join(tmpDir, "sub"), 0755)
-	os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("aaa"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "sub", "b.txt"), []byte("bbbb"), 0644)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "sub"), 0755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "a.txt"), []byte("aaa"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "sub", "b.txt"), []byte("bbbb"), 0644)
 
 	size := dirSize(tmpDir)
 	if size != 7 { // 3 + 4

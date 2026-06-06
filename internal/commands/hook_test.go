@@ -64,8 +64,8 @@ func TestLoadHooksInvalidYAML(t *testing.T) {
 	setupTestEnv(t, tmpDir)
 
 	hooksPath := hooksFilePath()
-	os.MkdirAll(filepath.Dir(hooksPath), 0700)
-	os.WriteFile(hooksPath, []byte("{{invalid"), 0600)
+	_ = os.MkdirAll(filepath.Dir(hooksPath), 0700)
+	_ = os.WriteFile(hooksPath, []byte("{{invalid"), 0600)
 
 	_, err := loadHooks()
 	if err == nil {
@@ -85,10 +85,10 @@ func TestExecuteHooksFiltering(t *testing.T) {
 			{Name: "on-failure", On: "failure", Command: "touch " + marker + "-fail"},
 		},
 	}
-	saveHooks(hc)
+	_ = saveHooks(hc)
 
 	t.Run("success hooks run on exit 0", func(t *testing.T) {
-		os.Remove(marker)
+		_ = os.Remove(marker)
 		ExecuteHooks("test", tmpDir, tmpDir, "", "agent", "task", 0)
 		if _, err := os.Stat(marker); os.IsNotExist(err) {
 			t.Error("expected success hook to run")
@@ -96,7 +96,7 @@ func TestExecuteHooksFiltering(t *testing.T) {
 	})
 
 	t.Run("failure hooks run on non-zero exit", func(t *testing.T) {
-		os.Remove(marker + "-fail")
+		_ = os.Remove(marker + "-fail")
 		ExecuteHooks("test", tmpDir, tmpDir, "", "agent", "task", 1)
 		if _, err := os.Stat(marker + "-fail"); os.IsNotExist(err) {
 			t.Error("expected failure hook to run")
@@ -104,7 +104,7 @@ func TestExecuteHooksFiltering(t *testing.T) {
 	})
 
 	t.Run("success hooks don't run on failure", func(t *testing.T) {
-		os.Remove(marker)
+		_ = os.Remove(marker)
 		ExecuteHooks("test", tmpDir, tmpDir, "", "agent", "task", 1)
 		if _, err := os.Stat(marker); !os.IsNotExist(err) {
 			t.Error("expected success hook NOT to run on failure")
@@ -122,15 +122,15 @@ func TestExecuteHooksAlways(t *testing.T) {
 			{Name: "always", On: "always", Command: "touch " + marker},
 		},
 	}
-	saveHooks(hc)
+	_ = saveHooks(hc)
 
-	os.Remove(marker)
+	_ = os.Remove(marker)
 	ExecuteHooks("test", tmpDir, tmpDir, "", "agent", "task", 1)
 	if _, err := os.Stat(marker); os.IsNotExist(err) {
 		t.Error("expected 'always' hook to run on failure")
 	}
 
-	os.Remove(marker)
+	_ = os.Remove(marker)
 	ExecuteHooks("test", tmpDir, tmpDir, "", "agent", "task", 0)
 	if _, err := os.Stat(marker); os.IsNotExist(err) {
 		t.Error("expected 'always' hook to run on success")

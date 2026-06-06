@@ -23,7 +23,7 @@ func TestProcessStop_Basic(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["stop-test"] = true
 
 	err := processStop(context.Background(), "stop-test", false, false, false)
@@ -49,7 +49,7 @@ func TestProcessStop_WithCleanup(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["stop-cleanup"] = true
 
 	err := processStop(context.Background(), "stop-cleanup", true, false, false)
@@ -77,7 +77,7 @@ func TestProcessStop_LockedWithCleanup(t *testing.T) {
 		Locked:     true,
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 
 	err := processStop(context.Background(), "stop-locked", true, false, false)
 	if err == nil {
@@ -99,7 +99,7 @@ func TestProcessStop_LockedWithForce(t *testing.T) {
 		Locked:     true,
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["stop-force"] = true
 
 	err := processStop(context.Background(), "stop-force", true, false, true)
@@ -133,7 +133,7 @@ func TestProcessRestart(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["restart-test"] = false // unmounted
 
 	err := processRestart("restart-test")
@@ -159,7 +159,7 @@ func TestProcessRestart_AlreadyMounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["restart-mounted"] = true
 
 	err := processRestart("restart-mounted")
@@ -206,7 +206,7 @@ func TestProcessPrune_DryRun(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now().Add(-30 * 24 * time.Hour), // 30 days old
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["prune-target"] = false
 
 	err := processPrune(true, false)
@@ -233,7 +233,7 @@ func TestProcessPrune_RemovesUnmounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["prune-unmounted"] = false
 
 	err := processPrune(false, false)
@@ -260,7 +260,7 @@ func TestProcessPrune_SkipsPersistent(t *testing.T) {
 		Persistent: true,
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["prune-persistent"] = false
 
 	err := processPrune(false, false)
@@ -287,7 +287,7 @@ func TestProcessPrune_SkipsLocked(t *testing.T) {
 		Locked:     true,
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["prune-locked"] = false
 
 	err := processPrune(false, false)
@@ -313,7 +313,7 @@ func TestProcessPrune_ForceRemovesMounted(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now().Add(-30 * 24 * time.Hour), // expired
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["prune-force"] = true
 
 	err := processPrune(false, true)
@@ -341,8 +341,8 @@ func TestShowAllStatus(t *testing.T) {
 			UpperDir:   filepath.Join(tmpDir, "upper", name),
 			CreatedAt:  time.Now(),
 		}
-		os.MkdirAll(ovl.UpperDir, 0755)
-		store.Save(ovl)
+		_ = os.MkdirAll(ovl.UpperDir, 0755)
+		_ = store.Save(ovl)
 		mock.mounted[name] = true
 	}
 
@@ -387,7 +387,7 @@ func TestProcessHealth(t *testing.T) {
 		UpperDir:   filepath.Join(tmpDir, "upper"),
 		CreatedAt:  time.Now(),
 	}
-	store.Save(ovl)
+	_ = store.Save(ovl)
 	mock.mounted["health-test"] = false
 
 	err := processHealth(context.Background(), "table", false)

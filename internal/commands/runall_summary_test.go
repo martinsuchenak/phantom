@@ -23,10 +23,10 @@ func TestPrintRunAllSummary_Table(t *testing.T) {
 
 	err := printRunAllSummary(results, "table")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -54,10 +54,10 @@ func TestPrintRunAllSummary_JSON(t *testing.T) {
 
 	err := printRunAllSummary(results, "json")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if err != nil {
@@ -86,10 +86,10 @@ func TestPrintRunAllSummary_WithFailures(t *testing.T) {
 	// We can't easily test the exit, but we can verify the output
 	_ = printRunAllSummary(results, "json")
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !strings.Contains(output, `"exit_code": 1`) {
@@ -102,7 +102,7 @@ func TestGetConfigMode(t *testing.T) {
 
 	t.Run("parallel mode", func(t *testing.T) {
 		path := tmpDir + "/parallel.yaml"
-		os.WriteFile(path, []byte("agents:\n  - agent: echo\n"), 0644)
+		_ = os.WriteFile(path, []byte("agents:\n  - agent: echo\n"), 0644)
 		mode, _, _ := getConfigMode(path)
 		if mode != "parallel" {
 			t.Errorf("expected 'parallel', got %q", mode)
@@ -111,7 +111,7 @@ func TestGetConfigMode(t *testing.T) {
 
 	t.Run("sequential mode", func(t *testing.T) {
 		path := tmpDir + "/sequential.yaml"
-		os.WriteFile(path, []byte("mode: sequential\nname: chain\nbranch: feature/chain\nagents:\n  - agent: echo\n"), 0644)
+		_ = os.WriteFile(path, []byte("mode: sequential\nname: chain\nbranch: feature/chain\nagents:\n  - agent: echo\n"), 0644)
 		mode, name, branch := getConfigMode(path)
 		if mode != "sequential" {
 			t.Errorf("expected 'sequential', got %q", mode)
@@ -133,7 +133,7 @@ func TestGetConfigMode(t *testing.T) {
 
 	t.Run("invalid yaml", func(t *testing.T) {
 		path := tmpDir + "/invalid.yaml"
-		os.WriteFile(path, []byte("{{invalid"), 0644)
+		_ = os.WriteFile(path, []byte("{{invalid"), 0644)
 		mode, _, _ := getConfigMode(path)
 		if mode != "parallel" {
 			t.Errorf("expected 'parallel' for invalid yaml, got %q", mode)

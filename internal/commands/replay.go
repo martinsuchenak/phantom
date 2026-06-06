@@ -110,7 +110,7 @@ func parseLastRun(name string) (*lastRunInfo, error) {
 		}
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Scan for the last occurrence of Agent/Task headers
 	// Log format:
