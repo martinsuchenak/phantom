@@ -74,7 +74,7 @@ func Start(ctx context.Context, cfg Config, registry *Registry) error {
 		gossipCfg.AdvertiseAddr = cfg.BindAddr
 	}
 	gossipCfg.Transport = gossip.NewSocketTransport(gossipCfg)
-	gossipCfg.MsgCodec = codec.NewJsonCodec()
+	gossipCfg.MsgCodec = codec.NewJSONCodec()
 
 	cluster, err := gossip.NewCluster(gossipCfg)
 	if err != nil {
