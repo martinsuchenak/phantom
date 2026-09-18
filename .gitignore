@@ -45,3 +45,4 @@ Thumbs.db
 
 # Skopos local code index
 .skopos/
+.skopos-session
